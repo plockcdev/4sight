@@ -51,4 +51,5 @@ there can be many `<id>-<parent_id>.sql` files to define a chain
 ## database migration state tracking
 
 We will have a migrations db called "4sight_migration", this is known as
-the "migrations" db, and it has migration tables, one per database.
+the "migrations" db, and it has migration tables, one per database, named
+`<db_name>` (no db type prefix).

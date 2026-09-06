@@ -18,7 +18,7 @@ directory:
   - otherwise 00000000.sql is the starting point
 - do a loop until the we have applied the "submitted" migration
   - apply "next migration", update current symlink
-  - if the `4sight_migration` table `<db_type>_<db_name>` db is missing, fail
-  - create row with applied id and current timestamp in `<db_type>_<db_name>`
+  - if the `4sight_migration` table `<db_name>` is missing, fail
+  - create row with applied id and current timestamp in `<db_name>`
     in the migrations db
   - "next migration" is now the migation that has current as parent
