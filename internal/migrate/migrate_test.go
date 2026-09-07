@@ -43,8 +43,8 @@ func (f *fakeStore) insertApplied(table, id string, at time.Time) error {
 func TestUpAppliesInitialMigration(t *testing.T) {
 	root := newMetadata(t, []string{"dolt_4sight_migration.md"})
 	mig := filepath.Join(root, "migrations", "dolt_4sight_migration")
-	writeFile(t, filepath.Join(mig, "00000000.sql"), "CREATE DATABASE 4sight_migration;\n")
-	mustSymlink(t, "00000000.sql", filepath.Join(mig, "submitted"))
+	writeFile(t, filepath.Join(mig, "00000000-00000000.sql"), "CREATE DATABASE 4sight_migration;\n")
+	mustSymlink(t, "00000000-00000000.sql", filepath.Join(mig, "submitted"))
 
 	st := &fakeStore{
 		dbs:    map[string]bool{},
@@ -60,7 +60,7 @@ func TestUpAppliesInitialMigration(t *testing.T) {
 	if err := runUp(root, st, func() time.Time { return fixed }, &out); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(st.applied, []string{"00000000.sql"}) {
+	if !slices.Equal(st.applied, []string{"00000000-00000000.sql"}) {
 		t.Fatalf("applied %v", st.applied)
 	}
 	if !slices.Equal(st.rows, []string{"4sight_migration 00000000 2026-09-06 16:13:09"}) {
@@ -69,15 +69,15 @@ func TestUpAppliesInitialMigration(t *testing.T) {
 	if got := strings.TrimSpace(out.String()); got != "applied dolt_4sight_migration 00000000" {
 		t.Fatalf("stdout %q", out.String())
 	}
-	assertLink(t, filepath.Join(mig, "current"), "00000000.sql")
+	assertLink(t, filepath.Join(mig, "current"), "00000000-00000000.sql")
 }
 
 func TestUpAppliesChainFromCurrent(t *testing.T) {
 	root := newMetadata(t, []string{"dolt_4sight_migration.md"})
 	mig := filepath.Join(root, "migrations", "dolt_4sight_migration")
-	writeFile(t, filepath.Join(mig, "00000000.sql"), "-- init\n")
+	writeFile(t, filepath.Join(mig, "00000000-00000000.sql"), "-- init\n")
 	writeFile(t, filepath.Join(mig, "00010001-00000000.sql"), "-- next\n")
-	mustSymlink(t, "00000000.sql", filepath.Join(mig, "current"))
+	mustSymlink(t, "00000000-00000000.sql", filepath.Join(mig, "current"))
 	mustSymlink(t, "00010001-00000000.sql", filepath.Join(mig, "submitted"))
 
 	st := &fakeStore{
@@ -96,9 +96,9 @@ func TestUpAppliesChainFromCurrent(t *testing.T) {
 func TestUpNoopsWhenCurrentMatchesSubmitted(t *testing.T) {
 	root := newMetadata(t, []string{"dolt_4sight_migration.md"})
 	mig := filepath.Join(root, "migrations", "dolt_4sight_migration")
-	writeFile(t, filepath.Join(mig, "00000000.sql"), "-- init\n")
-	mustSymlink(t, "00000000.sql", filepath.Join(mig, "current"))
-	mustSymlink(t, "00000000.sql", filepath.Join(mig, "submitted"))
+	writeFile(t, filepath.Join(mig, "00000000-00000000.sql"), "-- init\n")
+	mustSymlink(t, "00000000-00000000.sql", filepath.Join(mig, "current"))
+	mustSymlink(t, "00000000-00000000.sql", filepath.Join(mig, "submitted"))
 
 	st := &fakeStore{
 		dbs:    map[string]bool{"4sight_migration": true},
@@ -115,7 +115,7 @@ func TestUpNoopsWhenCurrentMatchesSubmitted(t *testing.T) {
 func TestUpFailsWhenInitialSQLMissing(t *testing.T) {
 	root := newMetadata(t, []string{"dolt_4sight_migration.md"})
 	err := runUp(root, &fakeStore{}, time.Now, ioDiscard())
-	if err == nil || !strings.Contains(err.Error(), "missing 00000000.sql") {
+	if err == nil || !strings.Contains(err.Error(), "missing 00000000-00000000.sql") {
 		t.Fatalf("got %v", err)
 	}
 	if !strings.Contains(err.Error(), filepath.Join(root, "migrations", "dolt_4sight_migration")) {
@@ -126,7 +126,7 @@ func TestUpFailsWhenInitialSQLMissing(t *testing.T) {
 func TestUpFailsWhenSubmittedMissing(t *testing.T) {
 	root := newMetadata(t, []string{"dolt_4sight_migration.md"})
 	mig := filepath.Join(root, "migrations", "dolt_4sight_migration")
-	writeFile(t, filepath.Join(mig, "00000000.sql"), "-- init\n")
+	writeFile(t, filepath.Join(mig, "00000000-00000000.sql"), "-- init\n")
 	err := runUp(root, &fakeStore{}, time.Now, ioDiscard())
 	if err == nil || !strings.Contains(err.Error(), "missing submitted") {
 		t.Fatalf("got %v", err)
@@ -139,7 +139,7 @@ func TestUpFailsWhenSubmittedMissing(t *testing.T) {
 func TestUpFailsWhenSubmittedDangling(t *testing.T) {
 	root := newMetadata(t, []string{"dolt_4sight_migration.md"})
 	mig := filepath.Join(root, "migrations", "dolt_4sight_migration")
-	writeFile(t, filepath.Join(mig, "00000000.sql"), "-- init\n")
+	writeFile(t, filepath.Join(mig, "00000000-00000000.sql"), "-- init\n")
 	mustSymlink(t, "missing.sql", filepath.Join(mig, "submitted"))
 	err := runUp(root, &fakeStore{}, time.Now, ioDiscard())
 	if err == nil || !strings.Contains(err.Error(), "existing file") {
@@ -150,10 +150,10 @@ func TestUpFailsWhenSubmittedDangling(t *testing.T) {
 func TestUpFailsWhenNoPathFromSubmittedToCurrent(t *testing.T) {
 	root := newMetadata(t, []string{"dolt_4sight_migration.md"})
 	mig := filepath.Join(root, "migrations", "dolt_4sight_migration")
-	writeFile(t, filepath.Join(mig, "00000000.sql"), "-- init\n")
+	writeFile(t, filepath.Join(mig, "00000000-00000000.sql"), "-- init\n")
 	writeFile(t, filepath.Join(mig, "00010001-00000000.sql"), "-- a\n")
 	mustSymlink(t, "00010001-00000000.sql", filepath.Join(mig, "current"))
-	mustSymlink(t, "00000000.sql", filepath.Join(mig, "submitted"))
+	mustSymlink(t, "00000000-00000000.sql", filepath.Join(mig, "submitted"))
 	err := runUp(root, &fakeStore{dbs: map[string]bool{"4sight_migration": true}}, time.Now, ioDiscard())
 	if err == nil || !strings.Contains(err.Error(), "no path through parent ids") {
 		t.Fatalf("got %v", err)
@@ -163,7 +163,7 @@ func TestUpFailsWhenNoPathFromSubmittedToCurrent(t *testing.T) {
 func TestUpFailsWhenParentIsAmbiguous(t *testing.T) {
 	root := newMetadata(t, []string{"dolt_4sight_migration.md"})
 	mig := filepath.Join(root, "migrations", "dolt_4sight_migration")
-	writeFile(t, filepath.Join(mig, "00000000.sql"), "-- init\n")
+	writeFile(t, filepath.Join(mig, "00000000-00000000.sql"), "-- init\n")
 	writeFile(t, filepath.Join(mig, "00010001-00000000.sql"), "-- a\n")
 	writeFile(t, filepath.Join(mig, "00020002-00000000.sql"), "-- b\n")
 	mustSymlink(t, "00010001-00000000.sql", filepath.Join(mig, "submitted"))
@@ -176,8 +176,8 @@ func TestUpFailsWhenParentIsAmbiguous(t *testing.T) {
 func TestUpFailsWhenDatabaseExistsWithoutCurrent(t *testing.T) {
 	root := newMetadata(t, []string{"dolt_4sight_migration.md"})
 	mig := filepath.Join(root, "migrations", "dolt_4sight_migration")
-	writeFile(t, filepath.Join(mig, "00000000.sql"), "-- init\n")
-	mustSymlink(t, "00000000.sql", filepath.Join(mig, "submitted"))
+	writeFile(t, filepath.Join(mig, "00000000-00000000.sql"), "-- init\n")
+	mustSymlink(t, "00000000-00000000.sql", filepath.Join(mig, "submitted"))
 	err := runUp(root, &fakeStore{dbs: map[string]bool{"4sight_migration": true}}, time.Now, ioDiscard())
 	if err == nil || !strings.Contains(err.Error(), "exists but current symlink is missing") {
 		t.Fatalf("got %v", err)
@@ -190,8 +190,8 @@ func TestUpFailsWhenDatabaseExistsWithoutCurrent(t *testing.T) {
 func TestUpFailsWhenTrackingTableMissing(t *testing.T) {
 	root := newMetadata(t, []string{"dolt_4sight_migration.md"})
 	mig := filepath.Join(root, "migrations", "dolt_4sight_migration")
-	writeFile(t, filepath.Join(mig, "00000000.sql"), "-- init\n")
-	mustSymlink(t, "00000000.sql", filepath.Join(mig, "submitted"))
+	writeFile(t, filepath.Join(mig, "00000000-00000000.sql"), "-- init\n")
+	mustSymlink(t, "00000000-00000000.sql", filepath.Join(mig, "submitted"))
 	err := runUp(root, &fakeStore{tables: map[string]bool{}}, time.Now, ioDiscard())
 	if err == nil || !strings.Contains(err.Error(), "4sight_migration table 4sight_migration is missing") {
 		t.Fatalf("got %v", err)
@@ -208,8 +208,8 @@ func TestUpMigratesFourSightFirst(t *testing.T) {
 		if err := os.MkdirAll(mig, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		writeFile(t, filepath.Join(mig, "00000000.sql"), "-- init\n")
-		mustSymlink(t, "00000000.sql", filepath.Join(mig, "submitted"))
+		writeFile(t, filepath.Join(mig, "00000000-00000000.sql"), "-- init\n")
+		mustSymlink(t, "00000000-00000000.sql", filepath.Join(mig, "submitted"))
 	}
 	st := &fakeStore{tables: map[string]bool{
 		"4sight_migration": true,
@@ -218,7 +218,7 @@ func TestUpMigratesFourSightFirst(t *testing.T) {
 	if err := runUp(root, st, func() time.Time { return time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) }, ioDiscard()); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(st.applied, []string{"00000000.sql", "00000000.sql"}) {
+	if !slices.Equal(st.applied, []string{"00000000-00000000.sql", "00000000-00000000.sql"}) {
 		t.Fatalf("applied %v", st.applied)
 	}
 	if !slices.Equal(st.rows, []string{
@@ -282,14 +282,14 @@ func TestUpIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(root, "schemas", "dolt_4sight_migration.md"), "tracking\n")
-	writeFile(t, filepath.Join(mig, "00000000.sql"), `CREATE DATABASE 4sight_migration;
+	writeFile(t, filepath.Join(mig, "00000000-00000000.sql"), `CREATE DATABASE 4sight_migration;
 
 CREATE TABLE 4sight_migration.4sight_migration (
   id CHAR(8) NOT NULL PRIMARY KEY,
   time DATETIME NOT NULL
 );
 `)
-	mustSymlink(t, "00000000.sql", filepath.Join(mig, "submitted"))
+	mustSymlink(t, "00000000-00000000.sql", filepath.Join(mig, "submitted"))
 	cmd := exec.Command("dolt", "init")
 	cmd.Dir = dbDir
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -299,7 +299,7 @@ CREATE TABLE 4sight_migration.4sight_migration (
 	if err := Up(dir); err != nil {
 		t.Fatal(err)
 	}
-	assertLink(t, filepath.Join(mig, "current"), "00000000.sql")
+	assertLink(t, filepath.Join(mig, "current"), "00000000-00000000.sql")
 
 	store := newDoltStore(dbDir)
 	exists, err := store.databaseExists("4sight_migration")
@@ -370,6 +370,9 @@ func newMetadata(t *testing.T, schemas []string) string {
 
 func writeFile(t *testing.T, path, body string) {
 	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}

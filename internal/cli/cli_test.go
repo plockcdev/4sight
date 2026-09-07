@@ -103,3 +103,43 @@ func TestHelpTopicMigrateUp(t *testing.T) {
 		t.Fatalf("help %q", stdout)
 	}
 }
+
+func TestHelpTopicMigrateImplementPrompt(t *testing.T) {
+	stdout, _ := capture(t, func() int {
+		return run([]string{"help", "migrate", "implement", "prompt"}, deps{})
+	})
+	if !strings.Contains(stdout, "4sight migrate implement prompt") {
+		t.Fatalf("help %q", stdout)
+	}
+}
+
+func TestMigrateImplementPromptRequiresArg(t *testing.T) {
+	code, _, stderr := captureCode(t, func() int {
+		return run([]string{"migrate", "implement", "prompt"}, deps{})
+	})
+	if code != 1 {
+		t.Fatalf("code %d", code)
+	}
+	if !strings.Contains(stderr, "requires exactly one schema spec path") {
+		t.Fatalf("stderr %q", stderr)
+	}
+}
+
+func TestMigrateImplementPromptDispatches(t *testing.T) {
+	called := ""
+	code, _, stderr := captureCode(t, func() int {
+		return run([]string{"migrate", "implement", "prompt", "dolt_spec.md"}, deps{
+			getwd: func() (string, error) { return "/tmp/repo", nil },
+			implementPrompt: func(cwd, schemaRel string) error {
+				called = cwd + " " + schemaRel
+				return nil
+			},
+		})
+	})
+	if code != 0 {
+		t.Fatalf("code %d stderr %q", code, stderr)
+	}
+	if called != "/tmp/repo dolt_spec.md" {
+		t.Fatalf("called %q", called)
+	}
+}

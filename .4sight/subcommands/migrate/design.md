@@ -15,14 +15,6 @@ of the schema, we call these "migrations".
 
 ## file layout
 
-### Specs
-
-The location for db schema spec lives
-in `.4sight/schemas`, these example files are all in the `.4sight/schemas` directory:
-
-`dolt_myapp.md`
-  full, current specification for myapp database in a dolt db
-
 ### migrations
 
 Each migration file is a DDL (sql) script.

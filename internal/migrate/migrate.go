@@ -15,13 +15,14 @@ import (
 
 const (
 	initialID            = "00000000"
-	initialMigrationFile = "00000000.sql"
+	initialMigrationFile = "00000000-00000000.sql"
 	migrationsDB         = "4sight_migration"
 	currentName          = "current"
 	submittedName        = "submitted"
 )
 
 var migrationIDRe = regexp.MustCompile(`^\d{8}$`)
+var migrationSuffixRe = regexp.MustCompile(`^\d{4}$`)
 
 type store interface {
 	databaseExists(name string) (bool, error)
@@ -205,7 +206,7 @@ func validateSubmittedToCurrent(byID map[string]*migrationFile, byParent map[str
 			return fmt.Errorf("cycle in parent chain at %s", at.id)
 		}
 		seen[at.id] = struct{}{}
-		if at.parentID == "" {
+		if at.parentID == "" || at.parentID == at.id {
 			return fmt.Errorf("no path through parent ids from submitted %s to current", submitted.id)
 		}
 		if len(byParent[at.parentID]) > 1 {
@@ -285,7 +286,7 @@ func listMigrationFiles(dir string) (map[string]*migrationFile, map[string][]*mi
 			return nil, nil, fmt.Errorf("duplicate migration id %s", file.id)
 		}
 		byID[file.id] = file
-		if file.parentID != "" {
+		if file.parentID != "" && file.parentID != file.id {
 			byParent[file.parentID] = append(byParent[file.parentID], file)
 		}
 	}
@@ -293,9 +294,6 @@ func listMigrationFiles(dir string) (map[string]*migrationFile, map[string][]*mi
 }
 
 func parseMigrationName(name string) (*migrationFile, error) {
-	if name == initialMigrationFile {
-		return &migrationFile{name: name, id: initialID}, nil
-	}
 	stem, ok := strings.CutSuffix(name, ".sql")
 	if !ok {
 		return nil, fmt.Errorf("invalid migration filename %q", name)
