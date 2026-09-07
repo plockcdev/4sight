@@ -15,3 +15,5 @@ agent implemented migrate up
 
 created .4sight/schemas/dolt_spec.md for bodies
 
+had agent create the migration for spec db and the migration tracker
+
