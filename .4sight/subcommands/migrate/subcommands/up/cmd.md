@@ -22,3 +22,5 @@ directory:
   - create row with applied id and current timestamp in `<db_name>`
     in the migrations db
   - "next migration" is now the migation that has current as parent
+
+for failures, give enough information such as directory if relevant

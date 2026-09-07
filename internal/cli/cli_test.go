@@ -1,0 +1,105 @@
+package cli
+
+import (
+	"io"
+	"os"
+	"strings"
+	"testing"
+)
+
+func TestRunHelp(t *testing.T) {
+	stdout, stderr := capture(t, func() int {
+		return run([]string{"--help"}, deps{})
+	})
+	if !strings.Contains(stdout, "migrate") {
+		t.Fatalf("help missing migrate: %s", stdout)
+	}
+	if stderr != "" {
+		t.Fatalf("stderr %q", stderr)
+	}
+}
+
+func TestRunUnknownCommand(t *testing.T) {
+	_, stderr := capture(t, func() int {
+		return run([]string{"nope"}, deps{})
+	})
+	if !strings.Contains(stderr, `unknown command "nope"`) {
+		t.Fatalf("stderr %q", stderr)
+	}
+}
+
+func TestMigrateUpRejectsArgs(t *testing.T) {
+	code, _, stderr := captureCode(t, func() int {
+		return run([]string{"migrate", "up", "spec"}, deps{})
+	})
+	if code != 1 {
+		t.Fatalf("code %d", code)
+	}
+	if !strings.Contains(stderr, "does not take arguments") {
+		t.Fatalf("stderr %q", stderr)
+	}
+}
+
+func TestMigrateUpDispatches(t *testing.T) {
+	called := ""
+	code, _, stderr := captureCode(t, func() int {
+		return run([]string{"migrate", "up"}, deps{
+			getwd: func() (string, error) { return "/tmp/repo", nil },
+			up: func(cwd string) error {
+				called = cwd
+				return nil
+			},
+		})
+	})
+	if code != 0 {
+		t.Fatalf("code %d stderr %q", code, stderr)
+	}
+	if called != "/tmp/repo" {
+		t.Fatalf("cwd %q", called)
+	}
+}
+
+func capture(t *testing.T, fn func() int) (string, string) {
+	t.Helper()
+	code, stdout, stderr := captureCode(t, fn)
+	if code != 0 && stdout == "" && stderr == "" {
+		t.Fatalf("exit %d with no output", code)
+	}
+	return stdout, stderr
+}
+
+func captureCode(t *testing.T, fn func() int) (int, string, string) {
+	t.Helper()
+	oldOut, oldErr := os.Stdout, os.Stderr
+	outR, outW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	errR, errW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout, os.Stderr = outW, errW
+	code := fn()
+	_ = outW.Close()
+	_ = errW.Close()
+	os.Stdout, os.Stderr = oldOut, oldErr
+	stdout, err := io.ReadAll(outR)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stderr, err := io.ReadAll(errR)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return code, string(stdout), string(stderr)
+}
+
+func TestHelpTopicMigrateUp(t *testing.T) {
+	stdout, _ := capture(t, func() int {
+		return run([]string{"help", "migrate", "up"}, deps{})
+	})
+	if !strings.Contains(stdout, "4sight migrate up") {
+		t.Fatalf("help %q", stdout)
+	}
+}
