@@ -40,6 +40,8 @@ current symlink is based on most recent query of "new" for the most recent migra
 
 there can be many `<id>-<parent_id>.sql` files to define a chain
 
+the first migration is always 00000000-00000000.sql and creates the database.
+
 ## database migration state tracking
 
 We will have a migrations db called "4sight_migration", this is known as

@@ -14,6 +14,9 @@ func TestRunHelp(t *testing.T) {
 	if !strings.Contains(stdout, "migrate") {
 		t.Fatalf("help missing migrate: %s", stdout)
 	}
+	if !strings.Contains(stdout, "spec") {
+		t.Fatalf("help missing spec: %s", stdout)
+	}
 	if stderr != "" {
 		t.Fatalf("stderr %q", stderr)
 	}
@@ -122,6 +125,46 @@ func TestMigrateImplementPromptRequiresArg(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "requires exactly one schema spec path") {
 		t.Fatalf("stderr %q", stderr)
+	}
+}
+
+func TestHelpTopicSpecImport(t *testing.T) {
+	stdout, _ := capture(t, func() int {
+		return run([]string{"help", "spec", "import"}, deps{})
+	})
+	if !strings.Contains(stdout, "4sight spec import") {
+		t.Fatalf("help %q", stdout)
+	}
+}
+
+func TestSpecImportRequiresArg(t *testing.T) {
+	code, _, stderr := captureCode(t, func() int {
+		return run([]string{"spec", "import"}, deps{})
+	})
+	if code != 1 {
+		t.Fatalf("code %d", code)
+	}
+	if !strings.Contains(stderr, "requires exactly one spec file path") {
+		t.Fatalf("stderr %q", stderr)
+	}
+}
+
+func TestSpecImportDispatches(t *testing.T) {
+	called := ""
+	code, _, stderr := captureCode(t, func() int {
+		return run([]string{"spec", "import", "design.md"}, deps{
+			getwd: func() (string, error) { return "/tmp/repo", nil },
+			specImport: func(cwd, specRel string) error {
+				called = cwd + " " + specRel
+				return nil
+			},
+		})
+	})
+	if code != 0 {
+		t.Fatalf("code %d stderr %q", code, stderr)
+	}
+	if called != "/tmp/repo design.md" {
+		t.Fatalf("called %q", called)
 	}
 }
 

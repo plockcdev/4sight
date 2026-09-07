@@ -6,12 +6,14 @@ import (
 	"strings"
 
 	"foursight.dev/4sight/internal/migrate"
+	"foursight.dev/4sight/internal/spec"
 )
 
 type deps struct {
 	getwd           func() (string, error)
 	up              func(cwd string) error
 	implementPrompt func(cwd, schemaRel string) error
+	specImport      func(cwd, specRel string) error
 }
 
 func Run(args []string) int {
@@ -19,6 +21,7 @@ func Run(args []string) int {
 		getwd:           os.Getwd,
 		up:              migrate.Up,
 		implementPrompt: migrate.ImplementPrompt,
+		specImport:      spec.Import,
 	})
 }
 
@@ -36,6 +39,8 @@ func run(args []string, d deps) int {
 		return 0
 	case "migrate":
 		return parseMigrate(args[1:], d)
+	case "spec":
+		return parseSpec(args[1:], d)
 	}
 	if strings.HasPrefix(args[0], "-") {
 		printMainHelp()
@@ -59,8 +64,14 @@ func runHelpTopic(topic []string) int {
 	case "migrate implement prompt":
 		printMigrateImplementPromptHelp()
 		return 0
+	case "spec":
+		printSpecHelp()
+		return 0
+	case "spec import":
+		printSpecImportHelp()
+		return 0
 	default:
-		fmt.Fprintf(os.Stderr, "4sight: unknown help topic %q (try: migrate, migrate up, migrate implement prompt)\n", strings.Join(topic, " "))
+		fmt.Fprintf(os.Stderr, "4sight: unknown help topic %q (try: migrate, migrate up, migrate implement prompt, spec, spec import)\n", strings.Join(topic, " "))
 		return 1
 	}
 }
@@ -137,6 +148,56 @@ func parseMigrateImplementPrompt(args []string, d deps) int {
 	return 0
 }
 
+func parseSpec(args []string, d deps) int {
+	if len(args) == 0 {
+		printSpecHelp()
+		return 0
+	}
+	switch args[0] {
+	case "-h", "--help":
+		printSpecHelp()
+		return 0
+	case "import":
+		return parseSpecImport(args[1:], d)
+	}
+	if strings.HasPrefix(args[0], "-") {
+		printSpecHelp()
+		return 1
+	}
+	fmt.Fprintf(os.Stderr, "4sight spec: unknown command %q\n", args[0])
+	return 1
+}
+
+func parseSpecImport(args []string, d deps) int {
+	if len(args) == 1 {
+		switch args[0] {
+		case "-h", "--help":
+			printSpecImportHelp()
+			return 0
+		}
+	}
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "-") {
+			printSpecImportHelp()
+			return 1
+		}
+	}
+	if len(args) != 1 {
+		fmt.Fprintln(os.Stderr, "4sight spec import: requires exactly one spec file path")
+		return 1
+	}
+	cwd, err := d.getwd()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "4sight spec import:", err)
+		return 1
+	}
+	if err := d.specImport(cwd, args[0]); err != nil {
+		fmt.Fprintln(os.Stderr, "4sight spec import:", err)
+		return 1
+	}
+	return 0
+}
+
 func parseMigrateUp(args []string, d deps) int {
 	if len(args) == 1 {
 		switch args[0] {
@@ -173,6 +234,7 @@ func printMainHelp() {
 Commands:
   help              Show this help
   migrate           Apply database schema migrations
+  spec              Import and manage specification bodies
 
 Global options:
   -h, --help        Show this help
@@ -216,6 +278,34 @@ related design documents, then generate a migration SQL file.
 
 The schema argument is a path relative to .4sight/schemas, such as
 dolt_spec.md or dolt_spec.
+
+Options:
+  -h, --help        Show this help
+`)
+}
+
+func printSpecHelp() {
+	fmt.Print(`4sight spec
+
+Import specification files into the spec database.
+
+Commands:
+  import            Import a spec file into bodies
+
+Options:
+  -h, --help        Show this help
+`)
+}
+
+func printSpecImportHelp() {
+	fmt.Print(`4sight spec import <spec>
+
+Import a specification file into the spec.bodies table.
+
+The spec argument is a path relative to .4sight/specs, such as
+design.md or subcommands/migrate/cmd.md.
+
+If the file does not exist, the command fails.
 
 Options:
   -h, --help        Show this help

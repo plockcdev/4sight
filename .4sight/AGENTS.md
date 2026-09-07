@@ -39,3 +39,7 @@ It is OK to not have a design.md within a given command directory.
 There is a cmd.md that is a peer to the design.md, it gives particular specification
 for the cli command like input args, env vars, flags, etc. how it behaves, and how
 it outputs.  This is code specific.
+
+# Implementing Schema Specs
+
+If user asks you to implement a schema spec, run `4sight migrate implement prompt <path to schema spec relative to schemas dir>` and then follow the prompt
