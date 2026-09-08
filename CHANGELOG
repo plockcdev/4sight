@@ -28,4 +28,4 @@ updated spec db for file/dir/file_change support for bodies, and agent implement
 created `.4sight/subcommands/spec/design.md` for general spec design
 
 created `.4sight/subcommands/spec/subcommands/import/cmd.md` for importing
-specs into bodies, agent implemented it
+specs into bodies
