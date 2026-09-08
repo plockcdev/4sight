@@ -42,4 +42,11 @@ it outputs.  This is code specific.
 
 # Implementing Schema Specs
 
-If user asks you to implement a schema spec, run `4sight migrate implement prompt <path to schema spec relative to schemas dir>` and then follow the prompt
+If user asks you to implement a schema spec or "the schema", run `4sight migrate implement prompt <path to schema spec relative to schemas dir>` and then follow the prompt
+
+Do not do this if they just ask to implement "the spec"
+
+# Implementing Code Specs
+
+If user asks you to implement code spec (or doesn't specify which kind of spec),
+run `4sight spec implement prompt` and then follow the prompt
