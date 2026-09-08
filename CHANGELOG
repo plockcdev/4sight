@@ -23,8 +23,9 @@ create .4sight/schemas/dolt_spec.md for the spec bodies
 
 created .4sight/subcommands/migrate/subcommands/implement/subcommands/prompt/cmd.md for `4sight migrate implement prompt`
 
+updated spec db for file/dir/file_change support for bodies, and agent implemented
+
 created `.4sight/subcommands/spec/design.md` for general spec design
 
 created `.4sight/subcommands/spec/subcommands/import/cmd.md` for importing
 specs into bodies, agent implemented it
-
