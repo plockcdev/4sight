@@ -29,3 +29,6 @@ created `.4sight/subcommands/spec/design.md` for general spec design
 
 created `.4sight/subcommands/spec/subcommands/import/cmd.md` for importing
 specs into bodies
+
+created `.4sight/subcommands/migrate/subcommands/import/cmd.md` for importing
+schema spec into bodies
