@@ -29,9 +29,6 @@ func runImport(metadataRoot string, loc []string, st store) error {
 	if err != nil {
 		return err
 	}
-	if dirRel == "" {
-		return fmt.Errorf("spec file %s: spec.dirs.path cannot represent the .4sight root directory", relFromMetadata(metadataRoot, filepath.Join(metadataRoot, name)))
-	}
 
 	specPath := filepath.Join(metadataRoot, filepath.FromSlash(dirRel), name)
 	info, err := os.Stat(specPath)

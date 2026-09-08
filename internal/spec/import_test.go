@@ -116,12 +116,15 @@ func TestImportFailsWhenDirectory(t *testing.T) {
 	}
 }
 
-func TestImportRejectsTopLevelUntilRootDirPathIsAllowed(t *testing.T) {
+func TestImportTopLevelRootDir(t *testing.T) {
 	root := newMetadata(t)
 	writeFile(t, filepath.Join(root, "design.md"), "top\n")
-	err := runImport(root, []string{"design.md"}, &fakeStore{})
-	if err == nil || !strings.Contains(err.Error(), "cannot represent the .4sight root directory") {
-		t.Fatalf("got %v", err)
+	st := &fakeStore{}
+	if err := runImport(root, []string{"design.md"}, st); err != nil {
+		t.Fatal(err)
+	}
+	if len(st.specs) != 1 || st.specs[0].dir != "" || st.specs[0].name != "design.md" || st.specs[0].body != "top\n" {
+		t.Fatalf("specs %v", st.specs)
 	}
 }
 
@@ -189,6 +192,7 @@ func TestImportIntegration(t *testing.T) {
 	root := filepath.Join(dir, ".4sight")
 	dbDir := filepath.Join(root, "db")
 	writeFile(t, filepath.Join(root, "subcommands", "spec", "cmd.md"), "quote ' and\nnewline\n")
+	writeFile(t, filepath.Join(root, "design.md"), "top body\n")
 	if err := os.MkdirAll(dbDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +210,7 @@ func TestImportIntegration(t *testing.T) {
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   path VARCHAR(255) NOT NULL,
   UNIQUE KEY path (path),
-  CHECK (path REGEXP '^[a-z0-9]([a-z0-9.-]*(/[a-z0-9.-]+)*)?$')
+  CHECK (path = '' OR path REGEXP '^[a-z0-9]([a-z0-9.-]*(/[a-z0-9.-]+)*)?$')
 )`,
 		`CREATE TABLE spec.files (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -234,18 +238,21 @@ func TestImportIntegration(t *testing.T) {
 	if err := Import(dir, []string{"spec", "cmd.md"}); err != nil {
 		t.Fatal(err)
 	}
-	rows, err := store.queryCSV("SELECT body FROM spec.bodies")
+	if err := Import(dir, []string{"design.md"}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := store.queryCSV("SELECT body FROM spec.bodies ORDER BY file_change_id")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 1 || rows[0][0] != "quote ' and\nnewline\n" {
+	if len(rows) != 2 || rows[0][0] != "quote ' and\nnewline\n" || rows[1][0] != "top body\n" {
 		t.Fatalf("rows %v", rows)
 	}
-	dirs, err := store.queryCSV("SELECT path FROM spec.dirs")
+	dirs, err := store.queryCSV("SELECT path FROM spec.dirs ORDER BY path")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(dirs) != 1 || dirs[0][0] != "subcommands/spec" {
+	if len(dirs) != 2 || dirs[0][0] != "" || dirs[1][0] != "subcommands/spec" {
 		t.Fatalf("dirs %v", dirs)
 	}
 }
