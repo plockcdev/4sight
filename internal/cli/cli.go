@@ -13,7 +13,7 @@ type deps struct {
 	getwd               func() (string, error)
 	up                  func(cwd string) error
 	implementPrompt     func(cwd, schemaRel string) error
-	specImport          func(cwd, specRel string) error
+	specImport          func(cwd string, loc []string) error
 	specImplementPrompt func(cwd string) error
 }
 
@@ -242,8 +242,8 @@ func parseSpecImport(args []string, d deps) int {
 			return 1
 		}
 	}
-	if len(args) != 1 {
-		fmt.Fprintln(os.Stderr, "4sight spec import: requires exactly one spec file path")
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "4sight spec import: requires a spec file location (command path then file name)")
 		return 1
 	}
 	cwd, err := d.getwd()
@@ -251,7 +251,7 @@ func parseSpecImport(args []string, d deps) int {
 		fmt.Fprintln(os.Stderr, "4sight spec import:", err)
 		return 1
 	}
-	if err := d.specImport(cwd, args[0]); err != nil {
+	if err := d.specImport(cwd, args); err != nil {
 		fmt.Fprintln(os.Stderr, "4sight spec import:", err)
 		return 1
 	}
@@ -387,12 +387,14 @@ Options:
 }
 
 func printSpecImportHelp() {
-	fmt.Print(`4sight spec import <spec>
+	fmt.Print(`4sight spec import <command...> <file>
 
 Import a specification file into the spec.bodies table.
 
-The spec argument is a path relative to .4sight/specs, such as
-design.md or subcommands/migrate/cmd.md.
+The location is the command/subcommand path as separate arguments,
+then the file name. For example, the cmd.md spec for "myprog foo bar":
+
+  4sight spec import myprog foo bar cmd.md
 
 If the file does not exist, the command fails.
 

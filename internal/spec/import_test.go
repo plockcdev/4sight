@@ -4,85 +4,157 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
 
-type fakeStore struct {
-	bodies []string
+type importedSpec struct {
+	dir, name, body, diff string
 }
 
-func (f *fakeStore) insertBody(body string) error {
-	f.bodies = append(f.bodies, body)
+type fakeStore struct {
+	specs []importedSpec
+}
+
+func (f *fakeStore) latestBody(dirPath, fileName string) (string, bool, error) {
+	for _, v := range slices.Backward(f.specs) {
+		if v.dir == dirPath && v.name == fileName {
+			return v.body, true, nil
+		}
+	}
+	return "", false, nil
+}
+
+func (f *fakeStore) insertSpec(dirPath, fileName, body, diff string) error {
+	f.specs = append(f.specs, importedSpec{dir: dirPath, name: fileName, body: body, diff: diff})
 	return nil
 }
 
 func TestImportInsertsBody(t *testing.T) {
 	root := newMetadata(t)
-	writeFile(t, filepath.Join(root, "specs", "design.md"), "# Spec\nbody text\n")
+	writeFile(t, filepath.Join(root, "subcommands", "migrate", "cmd.md"), "# Spec\nbody text\n")
 
 	st := &fakeStore{}
-	if err := runImport(root, "design.md", st); err != nil {
+	if err := runImport(root, []string{"migrate", "cmd.md"}, st); err != nil {
 		t.Fatal(err)
 	}
-	if len(st.bodies) != 1 || st.bodies[0] != "# Spec\nbody text\n" {
-		t.Fatalf("bodies %q", st.bodies)
+	if len(st.specs) != 1 {
+		t.Fatalf("specs %v", st.specs)
+	}
+	got := st.specs[0]
+	if got.dir != "subcommands/migrate" || got.name != "cmd.md" || got.body != "# Spec\nbody text\n" {
+		t.Fatalf("got %+v", got)
+	}
+	if !strings.Contains(got.diff, "+# Spec") {
+		t.Fatalf("diff %q", got.diff)
 	}
 }
 
-func TestImportNestedPath(t *testing.T) {
+func TestImportNestedCommandPath(t *testing.T) {
 	root := newMetadata(t)
-	writeFile(t, filepath.Join(root, "specs", "subcommands", "migrate", "cmd.md"), "import me\n")
+	writeFile(t, filepath.Join(root, "subcommands", "myprog", "subcommands", "foo", "subcommands", "bar", "cmd.md"), "import me\n")
 
 	st := &fakeStore{}
-	if err := runImport(root, "subcommands/migrate/cmd.md", st); err != nil {
+	if err := runImport(root, []string{"myprog", "foo", "bar", "cmd.md"}, st); err != nil {
 		t.Fatal(err)
 	}
-	if len(st.bodies) != 1 || st.bodies[0] != "import me\n" {
-		t.Fatalf("bodies %q", st.bodies)
+	if len(st.specs) != 1 || st.specs[0].dir != "subcommands/myprog/subcommands/foo/subcommands/bar" {
+		t.Fatalf("specs %v", st.specs)
+	}
+}
+
+func TestImportMainCommandPath(t *testing.T) {
+	root := newMetadata(t)
+	writeFile(t, filepath.Join(root, "main", "design.md"), "main design\n")
+
+	st := &fakeStore{}
+	if err := runImport(root, []string{"main", "design.md"}, st); err != nil {
+		t.Fatal(err)
+	}
+	if len(st.specs) != 1 || st.specs[0].dir != "main" || st.specs[0].body != "main design\n" {
+		t.Fatalf("specs %v", st.specs)
+	}
+}
+
+func TestImportReimportDiffsAgainstPriorBody(t *testing.T) {
+	root := newMetadata(t)
+	path := filepath.Join(root, "subcommands", "spec", "cmd.md")
+	writeFile(t, path, "first\n")
+	st := &fakeStore{}
+	if err := runImport(root, []string{"spec", "cmd.md"}, st); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, path, "second\n")
+	if err := runImport(root, []string{"spec", "cmd.md"}, st); err != nil {
+		t.Fatal(err)
+	}
+	if len(st.specs) != 2 {
+		t.Fatalf("specs %v", st.specs)
+	}
+	if !strings.Contains(st.specs[1].diff, "-first") || !strings.Contains(st.specs[1].diff, "+second") {
+		t.Fatalf("diff %q", st.specs[1].diff)
 	}
 }
 
 func TestImportFailsWhenMissing(t *testing.T) {
 	root := newMetadata(t)
-	err := runImport(root, "design.md", &fakeStore{})
-	if err == nil || !strings.Contains(err.Error(), "spec file .4sight/specs/design.md does not exist") {
+	err := runImport(root, []string{"migrate", "cmd.md"}, &fakeStore{})
+	if err == nil || !strings.Contains(err.Error(), "spec file .4sight/subcommands/migrate/cmd.md does not exist") {
 		t.Fatalf("got %v", err)
 	}
 }
 
 func TestImportFailsWhenDirectory(t *testing.T) {
 	root := newMetadata(t)
-	if err := os.MkdirAll(filepath.Join(root, "specs", "design.md"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, "subcommands", "migrate", "cmd.md"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	err := runImport(root, "design.md", &fakeStore{})
+	err := runImport(root, []string{"migrate", "cmd.md"}, &fakeStore{})
 	if err == nil || !strings.Contains(err.Error(), "does not exist") {
 		t.Fatalf("got %v", err)
 	}
 }
 
-func TestImportRejectsAbsolutePath(t *testing.T) {
+func TestImportRejectsTopLevelUntilRootDirPathIsAllowed(t *testing.T) {
 	root := newMetadata(t)
-	err := runImport(root, "/tmp/design.md", &fakeStore{})
-	if err == nil || !strings.Contains(err.Error(), "relative to specs dir") {
+	writeFile(t, filepath.Join(root, "design.md"), "top\n")
+	err := runImport(root, []string{"design.md"}, &fakeStore{})
+	if err == nil || !strings.Contains(err.Error(), "cannot represent the .4sight root directory") {
 		t.Fatalf("got %v", err)
 	}
 }
 
-func TestImportRejectsTraversal(t *testing.T) {
+func TestImportRejectsInvalidToken(t *testing.T) {
 	root := newMetadata(t)
-	err := runImport(root, "../secrets.md", &fakeStore{})
-	if err == nil || !strings.Contains(err.Error(), "relative to specs dir") {
+	err := runImport(root, []string{"../secrets.md"}, &fakeStore{})
+	if err == nil || !strings.Contains(err.Error(), "invalid") {
 		t.Fatalf("got %v", err)
 	}
 }
 
-func TestImportRejectsEmptyPath(t *testing.T) {
+func TestImportRejectsEmptyLocation(t *testing.T) {
 	root := newMetadata(t)
-	err := runImport(root, "  ", &fakeStore{})
-	if err == nil || !strings.Contains(err.Error(), "missing spec file path") {
+	err := runImport(root, nil, &fakeStore{})
+	if err == nil || !strings.Contains(err.Error(), "missing spec file location") {
 		t.Fatalf("got %v", err)
+	}
+}
+
+func TestResolveSpecLocation(t *testing.T) {
+	dir, name, err := resolveSpecLocation([]string{"myprog", "foo", "bar", "cmd.md"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dir != "subcommands/myprog/subcommands/foo/subcommands/bar" || name != "cmd.md" {
+		t.Fatalf("dir %q name %q", dir, name)
+	}
+}
+
+func TestUnifiedDiffEmptyPrior(t *testing.T) {
+	got := unifiedDiff("", "a\nb\n")
+	if !strings.Contains(got, "@@ -0,0 +1,2 @@") || !strings.Contains(got, "+a") {
+		t.Fatalf("diff %q", got)
 	}
 }
 
@@ -116,13 +188,10 @@ func TestImportIntegration(t *testing.T) {
 	dir := t.TempDir()
 	root := filepath.Join(dir, ".4sight")
 	dbDir := filepath.Join(root, "db")
-	if err := os.MkdirAll(filepath.Join(root, "specs"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	writeFile(t, filepath.Join(root, "subcommands", "spec", "cmd.md"), "quote ' and\nnewline\n")
 	if err := os.MkdirAll(dbDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	writeFile(t, filepath.Join(root, "specs", "cmd.md"), "quote ' and\nnewline\n")
 
 	cmd := exec.Command("dolt", "init")
 	cmd.Dir = dbDir
@@ -130,14 +199,39 @@ func TestImportIntegration(t *testing.T) {
 		t.Fatalf("dolt init: %s: %v", out, err)
 	}
 	store := newDoltStore(dbDir)
-	if err := store.run("sql", "-q", "CREATE DATABASE spec"); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.run("sql", "-q", "CREATE TABLE spec.bodies (body TEXT NOT NULL)"); err != nil {
-		t.Fatal(err)
+	for _, stmt := range []string{
+		"CREATE DATABASE spec",
+		"CREATE TABLE spec.bodies (body TEXT NOT NULL)",
+		`CREATE TABLE spec.dirs (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  path VARCHAR(255) NOT NULL,
+  UNIQUE KEY path (path),
+  CHECK (path REGEXP '^[a-z0-9]([a-z0-9.-]*(/[a-z0-9.-]+)*)?$')
+)`,
+		`CREATE TABLE spec.files (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  dir_id BIGINT UNSIGNED NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  UNIQUE KEY dir_name (dir_id, name),
+  CONSTRAINT fk_files_dir_id FOREIGN KEY (dir_id) REFERENCES spec.dirs (id),
+  CHECK (name REGEXP '^[a-z0-9.-]+$')
+)`,
+		`CREATE TABLE spec.file_changes (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  file_id BIGINT UNSIGNED NOT NULL,
+  diff TEXT NOT NULL,
+  CONSTRAINT fk_file_changes_file_id FOREIGN KEY (file_id) REFERENCES spec.files (id)
+)`,
+		`ALTER TABLE spec.bodies
+  ADD COLUMN file_change_id BIGINT UNSIGNED NOT NULL,
+  ADD CONSTRAINT fk_bodies_file_change_id FOREIGN KEY (file_change_id) REFERENCES spec.file_changes (id)`,
+	} {
+		if err := store.run("sql", "-q", stmt); err != nil {
+			t.Fatal(err)
+		}
 	}
 
-	if err := Import(dir, "cmd.md"); err != nil {
+	if err := Import(dir, []string{"spec", "cmd.md"}); err != nil {
 		t.Fatal(err)
 	}
 	rows, err := store.queryCSV("SELECT body FROM spec.bodies")
@@ -147,14 +241,18 @@ func TestImportIntegration(t *testing.T) {
 	if len(rows) != 1 || rows[0][0] != "quote ' and\nnewline\n" {
 		t.Fatalf("rows %v", rows)
 	}
+	dirs, err := store.queryCSV("SELECT path FROM spec.dirs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dirs) != 1 || dirs[0][0] != "subcommands/spec" {
+		t.Fatalf("dirs %v", dirs)
+	}
 }
 
 func newMetadata(t *testing.T) string {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), ".4sight")
-	if err := os.MkdirAll(filepath.Join(root, "specs"), 0o755); err != nil {
-		t.Fatal(err)
-	}
 	if err := os.MkdirAll(filepath.Join(root, "db"), 0o755); err != nil {
 		t.Fatal(err)
 	}

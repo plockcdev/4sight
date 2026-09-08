@@ -135,6 +135,9 @@ func TestHelpTopicSpecImport(t *testing.T) {
 	if !strings.Contains(stdout, "4sight spec import") {
 		t.Fatalf("help %q", stdout)
 	}
+	if !strings.Contains(stdout, "myprog foo bar cmd.md") {
+		t.Fatalf("help missing example: %q", stdout)
+	}
 }
 
 func TestSpecImportRequiresArg(t *testing.T) {
@@ -144,7 +147,7 @@ func TestSpecImportRequiresArg(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("code %d", code)
 	}
-	if !strings.Contains(stderr, "requires exactly one spec file path") {
+	if !strings.Contains(stderr, "requires a spec file location") {
 		t.Fatalf("stderr %q", stderr)
 	}
 }
@@ -192,10 +195,10 @@ func TestSpecImplementPromptDispatches(t *testing.T) {
 func TestSpecImportDispatches(t *testing.T) {
 	called := ""
 	code, _, stderr := captureCode(t, func() int {
-		return run([]string{"spec", "import", "design.md"}, deps{
+		return run([]string{"spec", "import", "myprog", "foo", "bar", "cmd.md"}, deps{
 			getwd: func() (string, error) { return "/tmp/repo", nil },
-			specImport: func(cwd, specRel string) error {
-				called = cwd + " " + specRel
+			specImport: func(cwd string, loc []string) error {
+				called = cwd + " " + strings.Join(loc, " ")
 				return nil
 			},
 		})
@@ -203,7 +206,7 @@ func TestSpecImportDispatches(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("code %d stderr %q", code, stderr)
 	}
-	if called != "/tmp/repo design.md" {
+	if called != "/tmp/repo myprog foo bar cmd.md" {
 		t.Fatalf("called %q", called)
 	}
 }

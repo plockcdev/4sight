@@ -26,4 +26,5 @@ Filesystem dir path relative to .4sight, could for example be part of a change o
 - id
 - path: unique directory path, no whitespace with combination of lowercase letters,
   hyphens, numbers, '/', and '.'
-  must start with letter or number, can't end with '/' or have two '/' in a row
+  if non-empty, must start with letter or number, can't end with '/' or have two '/' in a row
+  empty dir is allowed (root of .4sight)

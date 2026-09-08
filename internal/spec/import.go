@@ -5,35 +5,35 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
-func Import(cwd, specRel string) error {
+var specTokenRe = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]*$`)
+
+func Import(cwd string, loc []string) error {
 	root, err := findMetadataRoot(cwd)
 	if err != nil {
 		return err
 	}
-	return runImport(root, specRel, newDoltStore(filepath.Join(root, "db")))
+	return runImport(root, loc, newDoltStore(filepath.Join(root, "db")))
 }
 
 type store interface {
-	insertBody(body string) error
+	latestBody(dirPath, fileName string) (string, bool, error)
+	insertSpec(dirPath, fileName, body, diff string) error
 }
 
-func runImport(metadataRoot, specRel string, st store) error {
-	specRel = strings.TrimSpace(specRel)
-	if specRel == "" {
-		return fmt.Errorf("missing spec file path")
+func runImport(metadataRoot string, loc []string, st store) error {
+	dirRel, name, err := resolveSpecLocation(loc)
+	if err != nil {
+		return err
 	}
-	if filepath.IsAbs(specRel) {
-		return fmt.Errorf("spec file path must be relative to specs dir, not %q", specRel)
-	}
-	clean := filepath.Clean(specRel)
-	if clean == "." || strings.HasPrefix(clean, "..") {
-		return fmt.Errorf("spec file path must be relative to specs dir, not %q", specRel)
+	if dirRel == "" {
+		return fmt.Errorf("spec file %s: spec.dirs.path cannot represent the .4sight root directory", relFromMetadata(metadataRoot, filepath.Join(metadataRoot, name)))
 	}
 
-	specPath := filepath.Join(metadataRoot, "specs", clean)
+	specPath := filepath.Join(metadataRoot, filepath.FromSlash(dirRel), name)
 	info, err := os.Stat(specPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -45,14 +45,85 @@ func runImport(metadataRoot, specRel string, st store) error {
 		return fmt.Errorf("spec file %s does not exist", relFromMetadata(metadataRoot, specPath))
 	}
 
-	body, err := os.ReadFile(specPath)
+	bodyBytes, err := os.ReadFile(specPath)
 	if err != nil {
 		return fmt.Errorf("spec file %s: %w", relFromMetadata(metadataRoot, specPath), err)
 	}
-	if err := st.insertBody(string(body)); err != nil {
+	body := string(bodyBytes)
+
+	prior, _, err := st.latestBody(dirRel, name)
+	if err != nil {
+		return fmt.Errorf("lookup prior spec body: %w", err)
+	}
+	if err := st.insertSpec(dirRel, name, body, unifiedDiff(prior, body)); err != nil {
 		return fmt.Errorf("insert spec body: %w", err)
 	}
 	return nil
+}
+
+func resolveSpecLocation(loc []string) (dirRel, name string, err error) {
+	if len(loc) == 0 {
+		return "", "", fmt.Errorf("missing spec file location")
+	}
+	for _, part := range loc {
+		if strings.TrimSpace(part) == "" || part != strings.TrimSpace(part) {
+			return "", "", fmt.Errorf("spec file location %q is invalid", strings.Join(loc, " "))
+		}
+		if !specTokenRe.MatchString(part) {
+			return "", "", fmt.Errorf("spec file location token %q is invalid", part)
+		}
+	}
+	name = loc[len(loc)-1]
+	cmdPath := loc[:len(loc)-1]
+	if len(cmdPath) == 0 {
+		return "", name, nil
+	}
+	var parts []string
+	if cmdPath[0] == "main" {
+		parts = append(parts, "main")
+		cmdPath = cmdPath[1:]
+	}
+	for _, seg := range cmdPath {
+		parts = append(parts, "subcommands", seg)
+	}
+	return strings.Join(parts, "/"), name, nil
+}
+
+func unifiedDiff(oldText, newText string) string {
+	if oldText == newText {
+		return ""
+	}
+	oldLines := diffLines(oldText)
+	newLines := diffLines(newText)
+	var b strings.Builder
+	b.WriteString("--- a\n+++ b\n")
+	fmt.Fprintf(&b, "@@ -%s +%s @@\n", hunkSpan(oldLines), hunkSpan(newLines))
+	for _, line := range oldLines {
+		b.WriteString("-")
+		b.WriteString(line)
+		b.WriteByte('\n')
+	}
+	for _, line := range newLines {
+		b.WriteString("+")
+		b.WriteString(line)
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+func diffLines(s string) []string {
+	if s == "" {
+		return nil
+	}
+	s, _ = strings.CutSuffix(s, "\n")
+	return strings.Split(s, "\n")
+}
+
+func hunkSpan(lines []string) string {
+	if len(lines) == 0 {
+		return "0,0"
+	}
+	return fmt.Sprintf("1,%d", len(lines))
 }
 
 func findMetadataRoot(start string) (string, error) {
@@ -84,4 +155,8 @@ func relFromMetadata(metadataRoot, path string) string {
 
 func sqlBodyLiteral(body string) string {
 	return "CONVERT(UNHEX('" + hex.EncodeToString([]byte(body)) + "') USING utf8mb4)"
+}
+
+func sqlString(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
 }
