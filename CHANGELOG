@@ -32,3 +32,7 @@ specs into bodies
 
 created `.4sight/subcommands/migrate/subcommands/import/cmd.md` for importing
 schema spec into bodies
+
+created .4sight/subcommands/spec/subcommands/implement/subcommands/prompt/cmd.md for
+aligning implementation with spec (based on files on disk), asked agent to implement it
+directly

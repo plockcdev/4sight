@@ -10,18 +10,20 @@ import (
 )
 
 type deps struct {
-	getwd           func() (string, error)
-	up              func(cwd string) error
-	implementPrompt func(cwd, schemaRel string) error
-	specImport      func(cwd, specRel string) error
+	getwd               func() (string, error)
+	up                  func(cwd string) error
+	implementPrompt     func(cwd, schemaRel string) error
+	specImport          func(cwd, specRel string) error
+	specImplementPrompt func(cwd string) error
 }
 
 func Run(args []string) int {
 	return run(args, deps{
-		getwd:           os.Getwd,
-		up:              migrate.Up,
-		implementPrompt: migrate.ImplementPrompt,
-		specImport:      spec.Import,
+		getwd:               os.Getwd,
+		up:                  migrate.Up,
+		implementPrompt:     migrate.ImplementPrompt,
+		specImport:          spec.Import,
+		specImplementPrompt: spec.ImplementPrompt,
 	})
 }
 
@@ -70,8 +72,14 @@ func runHelpTopic(topic []string) int {
 	case "spec import":
 		printSpecImportHelp()
 		return 0
+	case "spec implement":
+		printSpecImplementHelp()
+		return 0
+	case "spec implement prompt":
+		printSpecImplementPromptHelp()
+		return 0
 	default:
-		fmt.Fprintf(os.Stderr, "4sight: unknown help topic %q (try: migrate, migrate up, migrate implement prompt, spec, spec import)\n", strings.Join(topic, " "))
+		fmt.Fprintf(os.Stderr, "4sight: unknown help topic %q (try: migrate, migrate up, migrate implement prompt, spec, spec import, spec implement prompt)\n", strings.Join(topic, " "))
 		return 1
 	}
 }
@@ -159,6 +167,8 @@ func parseSpec(args []string, d deps) int {
 		return 0
 	case "import":
 		return parseSpecImport(args[1:], d)
+	case "implement":
+		return parseSpecImplement(args[1:], d)
 	}
 	if strings.HasPrefix(args[0], "-") {
 		printSpecHelp()
@@ -166,6 +176,56 @@ func parseSpec(args []string, d deps) int {
 	}
 	fmt.Fprintf(os.Stderr, "4sight spec: unknown command %q\n", args[0])
 	return 1
+}
+
+func parseSpecImplement(args []string, d deps) int {
+	if len(args) == 0 {
+		printSpecImplementHelp()
+		return 0
+	}
+	switch args[0] {
+	case "-h", "--help":
+		printSpecImplementHelp()
+		return 0
+	case "prompt":
+		return parseSpecImplementPrompt(args[1:], d)
+	}
+	if strings.HasPrefix(args[0], "-") {
+		printSpecImplementHelp()
+		return 1
+	}
+	fmt.Fprintf(os.Stderr, "4sight spec implement: unknown command %q\n", args[0])
+	return 1
+}
+
+func parseSpecImplementPrompt(args []string, d deps) int {
+	if len(args) == 1 {
+		switch args[0] {
+		case "-h", "--help":
+			printSpecImplementPromptHelp()
+			return 0
+		}
+	}
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "-") {
+			printSpecImplementPromptHelp()
+			return 1
+		}
+	}
+	if len(args) > 0 {
+		fmt.Fprintln(os.Stderr, "4sight spec implement prompt: does not take arguments")
+		return 1
+	}
+	cwd, err := d.getwd()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "4sight spec implement prompt:", err)
+		return 1
+	}
+	if err := d.specImplementPrompt(cwd); err != nil {
+		fmt.Fprintln(os.Stderr, "4sight spec implement prompt:", err)
+		return 1
+	}
+	return 0
 }
 
 func parseSpecImport(args []string, d deps) int {
@@ -291,6 +351,35 @@ Import specification files into the spec database.
 
 Commands:
   import            Import a spec file into bodies
+  implement         Generate implementation prompts from specs
+
+Options:
+  -h, --help        Show this help
+`)
+}
+
+func printSpecImplementHelp() {
+	fmt.Print(`4sight spec implement
+
+Generate prompts for updating the application from specification documents.
+
+Commands:
+  prompt            Output a prompt for an agent to align the codebase with the spec
+
+Options:
+  -h, --help        Show this help
+`)
+}
+
+func printSpecImplementPromptHelp() {
+	fmt.Print(`4sight spec implement prompt
+
+Output a prompt instructing an agent to read design.md, cmd.md, and schema
+specifications, then update application code to match without changing the
+schema. If a schema spec or migration change is required, the agent should
+stop and report the gap.
+
+This command takes no arguments.
 
 Options:
   -h, --help        Show this help

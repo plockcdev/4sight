@@ -149,6 +149,46 @@ func TestSpecImportRequiresArg(t *testing.T) {
 	}
 }
 
+func TestHelpTopicSpecImplementPrompt(t *testing.T) {
+	stdout, _ := capture(t, func() int {
+		return run([]string{"help", "spec", "implement", "prompt"}, deps{})
+	})
+	if !strings.Contains(stdout, "4sight spec implement prompt") {
+		t.Fatalf("help %q", stdout)
+	}
+}
+
+func TestSpecImplementPromptRejectsArgs(t *testing.T) {
+	code, _, stderr := captureCode(t, func() int {
+		return run([]string{"spec", "implement", "prompt", "extra"}, deps{})
+	})
+	if code != 1 {
+		t.Fatalf("code %d", code)
+	}
+	if !strings.Contains(stderr, "does not take arguments") {
+		t.Fatalf("stderr %q", stderr)
+	}
+}
+
+func TestSpecImplementPromptDispatches(t *testing.T) {
+	called := ""
+	code, _, stderr := captureCode(t, func() int {
+		return run([]string{"spec", "implement", "prompt"}, deps{
+			getwd: func() (string, error) { return "/tmp/repo", nil },
+			specImplementPrompt: func(cwd string) error {
+				called = cwd
+				return nil
+			},
+		})
+	})
+	if code != 0 {
+		t.Fatalf("code %d stderr %q", code, stderr)
+	}
+	if called != "/tmp/repo" {
+		t.Fatalf("called %q", called)
+	}
+}
+
 func TestSpecImportDispatches(t *testing.T) {
 	called := ""
 	code, _, stderr := captureCode(t, func() int {
