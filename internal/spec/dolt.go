@@ -35,6 +35,36 @@ func (s *doltStore) latestBody(dirPath, fileName string) (string, bool, error) {
 	return rows[0][0], true, nil
 }
 
+func (s *doltStore) listLatestBodies() ([]specDoc, error) {
+	query := "SELECT d.path, f.name, b.body FROM spec.bodies b" +
+		" JOIN spec.file_changes fc ON fc.id = b.file_change_id" +
+		" JOIN spec.files f ON f.id = fc.file_id" +
+		" JOIN spec.dirs d ON d.id = f.dir_id" +
+		" ORDER BY d.path, f.name, fc.id"
+	rows, err := s.queryCSV(query)
+	if err != nil {
+		return nil, err
+	}
+	latest := make(map[string]specDoc)
+	var order []string
+	for _, row := range rows {
+		if len(row) < 3 {
+			continue
+		}
+		doc := specDoc{Dir: row[0], Name: row[1], Body: row[2]}
+		key := doc.Dir + "\x00" + doc.Name
+		if _, ok := latest[key]; !ok {
+			order = append(order, key)
+		}
+		latest[key] = doc
+	}
+	docs := make([]specDoc, 0, len(order))
+	for _, key := range order {
+		docs = append(docs, latest[key])
+	}
+	return docs, nil
+}
+
 func (s *doltStore) insertSpec(dirPath, fileName, body, diff string) error {
 	dirID, err := s.ensureDir(dirPath)
 	if err != nil {

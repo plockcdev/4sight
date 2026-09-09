@@ -17,7 +17,8 @@ The database will store specification data
 Files on disk, which for example could be part of a code or schema spec
 
 - fk dir_id
-- name: no whitespace file name with combination of lowercase letters, hyphens, numbers, and '.'
+- name: no whitespace file name with combination of lowercase letters,
+  hyphens, underscores, numbers, and '.', but not starting with a hyphen or period
 
 ## dirs
 

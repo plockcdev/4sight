@@ -14,14 +14,27 @@ func ImplementPrompt(cwd string) error {
 	if err != nil {
 		return err
 	}
-	return runImplementPrompt(root, os.Stdout)
+	return runImplementPrompt(root, newDoltStore(filepath.Join(root, "db")), os.Stdout)
 }
 
-func runImplementPrompt(metadataRoot string, stdout io.Writer) error {
-	specDocs, err := listCommandSpecDocs(metadataRoot)
+func runImplementPrompt(metadataRoot string, st store, stdout io.Writer) error {
+	docs, err := st.listLatestBodies()
 	if err != nil {
-		return err
+		return fmt.Errorf("list spec bodies: %w", err)
 	}
+	var codeDocs []specDoc
+	for _, doc := range docs {
+		if isCodeSpecName(doc.Name) {
+			codeDocs = append(codeDocs, doc)
+		}
+	}
+	slices.SortFunc(codeDocs, func(a, b specDoc) int {
+		if c := strings.Compare(a.Dir, b.Dir); c != 0 {
+			return c
+		}
+		return strings.Compare(a.Name, b.Name)
+	})
+
 	schemas, err := listSchemaSpecs(filepath.Join(metadataRoot, "schemas"))
 	if err != nil {
 		return err
@@ -29,9 +42,14 @@ func runImplementPrompt(metadataRoot string, stdout io.Writer) error {
 
 	projectRoot := filepath.Dir(metadataRoot)
 	var b strings.Builder
-	b.WriteString("Read these design and command specification documents to understand the application behavior:\n")
-	for _, doc := range specDocs {
-		fmt.Fprintf(&b, "- %s\n", relFromProject(projectRoot, doc))
+	b.WriteString("Read these design and command specification documents from the spec database to understand the application behavior:\n")
+	for _, doc := range codeDocs {
+		fmt.Fprintf(&b, "\n----- SPEC %s -----\n", displaySpecPath(doc.Dir, doc.Name))
+		b.WriteString(doc.Body)
+		if !strings.HasSuffix(doc.Body, "\n") {
+			b.WriteByte('\n')
+		}
+		b.WriteString("----- END SPEC -----\n")
 	}
 	b.WriteByte('\n')
 	b.WriteString("Read these database schema specifications:\n")
@@ -44,54 +62,6 @@ func runImplementPrompt(metadataRoot string, stdout io.Writer) error {
 	b.WriteString("If the schema needs a spec change or a migration to be compatible with the code spec, stop and tell the user the gap (schema spec or migration, and what kinds of changes are needed).\n")
 	_, err = io.WriteString(stdout, b.String())
 	return err
-}
-
-func listCommandSpecDocs(metadataRoot string) ([]string, error) {
-	var docs []string
-	for _, name := range []string{"design.md", "cmd.md"} {
-		path := filepath.Join(metadataRoot, name)
-		info, err := os.Stat(path)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return nil, fmt.Errorf("list spec docs under %s: %w", metadataRoot, err)
-		}
-		if !info.IsDir() {
-			docs = append(docs, path)
-		}
-	}
-	for _, dir := range []string{"main", "subcommands"} {
-		base := filepath.Join(metadataRoot, dir)
-		info, err := os.Stat(base)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return nil, fmt.Errorf("list spec docs under %s: %w", base, err)
-		}
-		if !info.IsDir() {
-			continue
-		}
-		err = filepath.WalkDir(base, func(path string, d os.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if d.IsDir() {
-				return nil
-			}
-			switch d.Name() {
-			case "design.md", "cmd.md":
-				docs = append(docs, path)
-			}
-			return nil
-		})
-		if err != nil {
-			return nil, fmt.Errorf("list spec docs under %s: %w", base, err)
-		}
-	}
-	slices.Sort(docs)
-	return docs, nil
 }
 
 func listSchemaSpecs(schemasDir string) ([]string, error) {

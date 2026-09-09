@@ -31,6 +31,23 @@ func (f *fakeStore) insertSpec(dirPath, fileName, body, diff string) error {
 	return nil
 }
 
+func (f *fakeStore) listLatestBodies() ([]specDoc, error) {
+	latest := make(map[string]specDoc)
+	var order []string
+	for _, s := range f.specs {
+		key := s.dir + "\x00" + s.name
+		if _, ok := latest[key]; !ok {
+			order = append(order, key)
+		}
+		latest[key] = specDoc{Dir: s.dir, Name: s.name, Body: s.body}
+	}
+	docs := make([]specDoc, 0, len(order))
+	for _, key := range order {
+		docs = append(docs, latest[key])
+	}
+	return docs, nil
+}
+
 func TestImportInsertsBody(t *testing.T) {
 	root := newMetadata(t)
 	writeFile(t, filepath.Join(root, "subcommands", "migrate", "cmd.md"), "# Spec\nbody text\n")
@@ -140,6 +157,51 @@ func TestImportRejectsEmptyLocation(t *testing.T) {
 	root := newMetadata(t)
 	err := runImport(root, nil, &fakeStore{})
 	if err == nil || !strings.Contains(err.Error(), "missing spec file location") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestImportSchemaInsertsBody(t *testing.T) {
+	root := newMetadata(t)
+	writeFile(t, filepath.Join(root, "schemas", "dolt_spec.md"), "# Spec\nschema body\n")
+
+	st := &fakeStore{}
+	if err := runImportSchema(root, "dolt_spec.md", st); err != nil {
+		t.Fatal(err)
+	}
+	if len(st.specs) != 1 {
+		t.Fatalf("specs %v", st.specs)
+	}
+	got := st.specs[0]
+	if got.dir != "schemas" || got.name != "dolt_spec.md" || got.body != "# Spec\nschema body\n" {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestImportSchemaAddsMDSuffix(t *testing.T) {
+	root := newMetadata(t)
+	writeFile(t, filepath.Join(root, "schemas", "dolt_spec.md"), "schema\n")
+	st := &fakeStore{}
+	if err := runImportSchema(root, "dolt_spec", st); err != nil {
+		t.Fatal(err)
+	}
+	if len(st.specs) != 1 || st.specs[0].name != "dolt_spec.md" {
+		t.Fatalf("specs %v", st.specs)
+	}
+}
+
+func TestImportSchemaFailsWhenMissing(t *testing.T) {
+	root := newMetadata(t)
+	err := runImportSchema(root, "dolt_missing.md", &fakeStore{})
+	if err == nil || !strings.Contains(err.Error(), "schema spec .4sight/schemas/dolt_missing.md does not exist") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestImportSchemaRejectsTraversal(t *testing.T) {
+	root := newMetadata(t)
+	err := runImportSchema(root, "../secrets.md", &fakeStore{})
+	if err == nil || !strings.Contains(err.Error(), "relative to schemas dir") {
 		t.Fatalf("got %v", err)
 	}
 }

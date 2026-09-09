@@ -19,9 +19,130 @@ func Import(cwd string, loc []string) error {
 	return runImport(root, loc, newDoltStore(filepath.Join(root, "db")))
 }
 
+func ImportSchema(cwd, schemaRel string) error {
+	root, err := findMetadataRoot(cwd)
+	if err != nil {
+		return err
+	}
+	return runImportSchema(root, schemaRel, newDoltStore(filepath.Join(root, "db")))
+}
+
+func runImportSchema(metadataRoot, schemaRel string, st store) error {
+	name, err := resolveSchemaFileName(schemaRel)
+	if err != nil {
+		return err
+	}
+	specPath := filepath.Join(metadataRoot, "schemas", name)
+	info, err := os.Stat(specPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("schema spec %s does not exist", relFromMetadata(metadataRoot, specPath))
+		}
+		return fmt.Errorf("schema spec %s: %w", relFromMetadata(metadataRoot, specPath), err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("schema spec %s does not exist", relFromMetadata(metadataRoot, specPath))
+	}
+	bodyBytes, err := os.ReadFile(specPath)
+	if err != nil {
+		return fmt.Errorf("schema spec %s: %w", relFromMetadata(metadataRoot, specPath), err)
+	}
+	body := string(bodyBytes)
+	prior, _, err := st.latestBody("schemas", name)
+	if err != nil {
+		return fmt.Errorf("lookup prior spec body: %w", err)
+	}
+	if err := st.insertSpec("schemas", name, body, unifiedDiff(prior, body)); err != nil {
+		return fmt.Errorf("insert spec body: %w", err)
+	}
+	return nil
+}
+
+func resolveSchemaFileName(schemaRel string) (string, error) {
+	schemaRel = strings.TrimSpace(schemaRel)
+	if schemaRel == "" {
+		return "", fmt.Errorf("missing schema spec path")
+	}
+	if filepath.IsAbs(schemaRel) {
+		return "", fmt.Errorf("schema spec path must be relative to schemas dir, not %q", schemaRel)
+	}
+	clean := filepath.Clean(schemaRel)
+	if clean == "." || strings.HasPrefix(clean, "..") {
+		return "", fmt.Errorf("schema spec path must be relative to schemas dir, not %q", schemaRel)
+	}
+	if filepath.Base(clean) != clean {
+		return "", fmt.Errorf("schema spec path must be a file in the schemas dir, not %q", schemaRel)
+	}
+	if !strings.HasSuffix(clean, ".md") {
+		clean += ".md"
+	}
+	if !schemaFileRe.MatchString(clean) {
+		return "", fmt.Errorf("schema spec path token %q is invalid", clean)
+	}
+	return clean, nil
+}
+
+var schemaFileRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*\.md$`)
+
+type specDoc struct {
+	Dir  string
+	Name string
+	Body string
+}
+
 type store interface {
 	latestBody(dirPath, fileName string) (string, bool, error)
 	insertSpec(dirPath, fileName, body, diff string) error
+	listLatestBodies() ([]specDoc, error)
+}
+
+func isCodeSpecName(name string) bool {
+	switch name {
+	case "design.md", "cmd.md", "coding.md":
+		return true
+	}
+	return false
+}
+
+func displaySpecPath(dirRel, name string) string {
+	if dirRel == "" {
+		return ".4sight/" + name
+	}
+	return ".4sight/" + dirRel + "/" + name
+}
+
+func locatorFromDirName(dir, name string) []string {
+	if dir == "" {
+		return []string{name}
+	}
+	parts := strings.Split(dir, "/")
+	var loc []string
+	i := 0
+	if parts[0] == "main" {
+		loc = append(loc, "main")
+		i = 1
+	}
+	for i < len(parts) {
+		if parts[i] == "subcommands" && i+1 < len(parts) {
+			loc = append(loc, parts[i+1])
+			i += 2
+			continue
+		}
+		loc = append(loc, parts[i])
+		i++
+	}
+	return append(loc, name)
+}
+
+func writeSpecFile(metadataRoot, dirRel, name, body string) (string, error) {
+	path := filepath.Join(metadataRoot, filepath.FromSlash(dirRel), name)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return "", fmt.Errorf("create spec dir for %s: %w", relFromMetadata(metadataRoot, path), err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		return "", fmt.Errorf("write spec file %s: %w", relFromMetadata(metadataRoot, path), err)
+	}
+	return path, nil
 }
 
 func runImport(metadataRoot string, loc []string, st store) error {

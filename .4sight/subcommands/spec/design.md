@@ -1,12 +1,16 @@
 # Spec design
 
-We will manage specifications in the spec database.
+We will manage code specifications in the spec database.
 
 The "bodies" are the spec files "latest" version, and an agent should be
 able to read the bodies and update the application implementation
 
-The can be imported from files on disk
+Specs can be imported from files on disk
 
-Currently supported are "design.md", "cmd.md" and "coding.md" in the `4sight` directory,
-which can have command/subcommand specific files to focus on details related to the
-heirarchy.
+Specs can be exported to disk.
+
+Currently supported code spec docs, all found in the `.4sight` directory:
+
+- design.md - inheritable design across subcommands
+- cmd.md - specific to 1 command
+- coding.md - inheritable coding standards across subcommands

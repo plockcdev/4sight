@@ -36,3 +36,14 @@ schema spec into bodies
 created .4sight/subcommands/spec/subcommands/implement/subcommands/prompt/cmd.md for
 aligning implementation with spec (based on files on disk), asked agent to implement it
 directly
+
+imported a spec
+
+create spec sync-check subcommand to check db/filesystem spec alignment, and give
+instructions on how to align
+
+---
+add a sync command to write db back out to disk
+import the rest of the specs
+update implement to read from the db specs
+

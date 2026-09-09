@@ -1,3 +1,5 @@
+Do not treat CHANGELOG as a spec input
+
 # 4sight spec driven implementation management of program
 
 ## DB Specification
@@ -19,7 +21,11 @@ in .4sight
 - subcommands/* -  each subdir under `subcommands` has a name matching the subcommand name
   and has files related to that named subcommand, and possibly a nested subcommands dir
 
+if there is no cmd.md for a subcommand dir, then there is no subcommand
+
 ## Spec Docs
+
+When no qualifier such as "schema" for specs, then code specs are assumed.
 
 The program design is split across design.md files within the subcommand structure
 
