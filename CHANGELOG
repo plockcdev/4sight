@@ -42,6 +42,8 @@ imported a spec
 create spec sync-check subcommand to check db/filesystem spec alignment, and give
 instructions on how to align
 
+created spec sync-diff sucbommand to see the diff between db and spec
+
 ---
 add a sync command to write db back out to disk
 import the rest of the specs

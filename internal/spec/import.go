@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -208,25 +209,146 @@ func resolveSpecLocation(loc []string) (dirRel, name string, err error) {
 }
 
 func unifiedDiff(oldText, newText string) string {
+	return unifiedDiffPaths("a", "b", oldText, newText)
+}
+
+func unifiedDiffPaths(oldPath, newPath, oldText, newText string) string {
 	if oldText == newText {
 		return ""
 	}
-	oldLines := diffLines(oldText)
-	newLines := diffLines(newText)
-	var b strings.Builder
-	b.WriteString("--- a\n+++ b\n")
-	fmt.Fprintf(&b, "@@ -%s +%s @@\n", hunkSpan(oldLines), hunkSpan(newLines))
-	for _, line := range oldLines {
-		b.WriteString("-")
-		b.WriteString(line)
-		b.WriteByte('\n')
+	ops := lineDiffOps(diffLines(oldText), diffLines(newText))
+	hunks := diffHunks(ops, 3)
+	if len(hunks) == 0 {
+		return ""
 	}
-	for _, line := range newLines {
-		b.WriteString("+")
-		b.WriteString(line)
-		b.WriteByte('\n')
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "--- %s\n+++ %s\n", oldPath, newPath)
+	for _, hunk := range hunks {
+		writeDiffHunk(&b, ops, hunk)
 	}
 	return b.String()
+}
+
+type diffOp struct {
+	tag  byte
+	text string
+}
+
+func lineDiffOps(oldLines, newLines []string) []diffOp {
+	m, n := len(oldLines), len(newLines)
+	dp := make([][]int, m+1)
+	for i := range dp {
+		dp[i] = make([]int, n+1)
+	}
+	for i := 1; i <= m; i++ {
+		for j := 1; j <= n; j++ {
+			if oldLines[i-1] == newLines[j-1] {
+				dp[i][j] = dp[i-1][j-1] + 1
+			} else if dp[i-1][j] >= dp[i][j-1] {
+				dp[i][j] = dp[i-1][j]
+			} else {
+				dp[i][j] = dp[i][j-1]
+			}
+		}
+	}
+
+	var rev []diffOp
+	for i, j := m, n; i > 0 || j > 0; {
+		switch {
+		case i > 0 && j > 0 && oldLines[i-1] == newLines[j-1]:
+			rev = append(rev, diffOp{tag: ' ', text: oldLines[i-1]})
+			i--
+			j--
+		case j > 0 && (i == 0 || dp[i][j-1] >= dp[i-1][j]):
+			rev = append(rev, diffOp{tag: '+', text: newLines[j-1]})
+			j--
+		default:
+			rev = append(rev, diffOp{tag: '-', text: oldLines[i-1]})
+			i--
+		}
+	}
+	ops := make([]diffOp, len(rev))
+	for i, op := range rev {
+		ops[len(rev)-1-i] = op
+	}
+	return ops
+}
+
+type diffHunk struct {
+	start, end int
+}
+
+func diffHunks(ops []diffOp, context int) []diffHunk {
+	if len(ops) == 0 {
+		return nil
+	}
+	changed := make([]bool, len(ops))
+	for i, op := range ops {
+		changed[i] = op.tag != ' '
+	}
+	var ranges [][2]int
+	for i := range ops {
+		if !changed[i] {
+			continue
+		}
+		start := max(0, i-context)
+		end := min(len(ops), i+context+1)
+		ranges = append(ranges, [2]int{start, end})
+	}
+	if len(ranges) == 0 {
+		return nil
+	}
+	slices.SortFunc(ranges, func(a, b [2]int) int {
+		return a[0] - b[0]
+	})
+	merged := [][2]int{ranges[0]}
+	for _, r := range ranges[1:] {
+		last := &merged[len(merged)-1]
+		if r[0] <= last[1] {
+			last[1] = max(last[1], r[1])
+			continue
+		}
+		merged = append(merged, r)
+	}
+	hunks := make([]diffHunk, len(merged))
+	for i, r := range merged {
+		hunks[i] = diffHunk{start: r[0], end: r[1]}
+	}
+	return hunks
+}
+
+func writeDiffHunk(b *strings.Builder, ops []diffOp, hunk diffHunk) {
+	oldStart, oldCount := diffSideSpan(ops, hunk, '-', ' ')
+	newStart, newCount := diffSideSpan(ops, hunk, '+', ' ')
+	fmt.Fprintf(b, "@@ -%s +%s @@\n", diffRange(oldStart, oldCount), diffRange(newStart, newCount))
+	for _, op := range ops[hunk.start:hunk.end] {
+		b.WriteByte(op.tag)
+		b.WriteString(op.text)
+		b.WriteByte('\n')
+	}
+}
+
+func diffSideSpan(ops []diffOp, hunk diffHunk, removeTag, keepTag byte) (start, count int) {
+	start = 1
+	for _, op := range ops[:hunk.start] {
+		if op.tag == keepTag || op.tag == removeTag {
+			start++
+		}
+	}
+	for _, op := range ops[hunk.start:hunk.end] {
+		if op.tag == keepTag || op.tag == removeTag {
+			count++
+		}
+	}
+	return start, count
+}
+
+func diffRange(start, count int) string {
+	if count == 0 {
+		return "0,0"
+	}
+	return fmt.Sprintf("%d,%d", start, count)
 }
 
 func diffLines(s string) []string {
@@ -235,13 +357,6 @@ func diffLines(s string) []string {
 	}
 	s, _ = strings.CutSuffix(s, "\n")
 	return strings.Split(s, "\n")
-}
-
-func hunkSpan(lines []string) string {
-	if len(lines) == 0 {
-		return "0,0"
-	}
-	return fmt.Sprintf("1,%d", len(lines))
 }
 
 func findMetadataRoot(start string) (string, error) {

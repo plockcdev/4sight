@@ -27,29 +27,30 @@ func TestSyncCheckSections(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := out.String()
-	if !strings.Contains(got, "Import (overwrite database from disk):") {
-		t.Fatalf("missing import section: %q", got)
-	}
-	if !strings.Contains(got, "Export (overwrite disk from database):") {
-		t.Fatalf("missing export section: %q", got)
-	}
-	if !strings.Contains(got, "4sight spec import migrate design.md") {
+	newSec, updatedSec, exportSec, summary := splitSyncCheckOutput(t, got)
+	if !strings.Contains(newSec, "4sight spec import migrate design.md") {
 		t.Fatalf("missing disk-only import: %q", got)
 	}
-	if !strings.Contains(got, "4sight spec import spec design.md") {
+	if !strings.Contains(newSec, "4sight migrate import dolt_4sight_migration.md") {
+		t.Fatalf("missing schema disk-only import: %q", got)
+	}
+	if strings.Contains(newSec, "spec design.md") || strings.Contains(newSec, "dolt_spec.md") {
+		t.Fatalf("updated file listed as new: %q", got)
+	}
+	if !strings.Contains(updatedSec, "4sight spec import spec design.md") {
 		t.Fatalf("missing mismatch import: %q", got)
 	}
-	if !strings.Contains(got, "4sight spec export spec design.md") {
-		t.Fatalf("missing mismatch export: %q", got)
-	}
-	if !strings.Contains(got, "4sight spec export spec import cmd.md") {
-		t.Fatalf("missing db-only export: %q", got)
-	}
-	if !strings.Contains(got, "4sight migrate import dolt_spec.md") {
+	if !strings.Contains(updatedSec, "4sight migrate import dolt_spec.md") {
 		t.Fatalf("missing schema mismatch import: %q", got)
 	}
-	if !strings.Contains(got, "4sight migrate import dolt_4sight_migration.md") {
-		t.Fatalf("missing schema disk-only import: %q", got)
+	if strings.Contains(updatedSec, "migrate design.md") || strings.Contains(updatedSec, "dolt_4sight_migration.md") {
+		t.Fatalf("new file listed as updated: %q", got)
+	}
+	if !strings.Contains(exportSec, "4sight spec export spec design.md") {
+		t.Fatalf("missing mismatch export: %q", got)
+	}
+	if !strings.Contains(exportSec, "4sight spec export spec import cmd.md") {
+		t.Fatalf("missing db-only export: %q", got)
 	}
 	if strings.Contains(got, "coding.md") {
 		t.Fatalf("listed matching file: %q", got)
@@ -58,6 +59,9 @@ func TestSyncCheckSections(t *testing.T) {
 		if strings.Contains(line, "spec export") && strings.Contains(line, "dolt_spec") {
 			t.Fatalf("used spec export for schema: %q", got)
 		}
+	}
+	if summary != "Summary: matching 1, not in db 2, mismatched 2" {
+		t.Fatalf("summary %q", summary)
 	}
 }
 
@@ -73,12 +77,43 @@ func TestSyncCheckAllMatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := out.String()
-	if strings.Count(got, "(none)") != 2 {
+	if strings.Count(got, "(none)") != 3 {
 		t.Fatalf("stdout %q", got)
 	}
 	if strings.Contains(got, "4sight spec") {
 		t.Fatalf("unexpected command: %q", got)
 	}
+	_, _, _, summary := splitSyncCheckOutput(t, got)
+	if summary != "Summary: matching 1, not in db 0, mismatched 0" {
+		t.Fatalf("summary %q", summary)
+	}
+}
+
+func splitSyncCheckOutput(t *testing.T, got string) (newSec, updatedSec, exportSec, summary string) {
+	t.Helper()
+	const (
+		hNew     = "Import new spec files (overwrite database from disk):\n"
+		hUpdated = "Import updated spec files (overwrite database from disk):\n"
+		hExport  = "Export (overwrite disk from database):\n"
+	)
+	afterNew, ok := strings.CutPrefix(got, hNew)
+	if !ok {
+		t.Fatalf("missing new import section: %q", got)
+	}
+	newSec, rest, ok := strings.Cut(afterNew, "\n"+hUpdated)
+	if !ok {
+		t.Fatalf("missing updated import section: %q", got)
+	}
+	updatedSec, rest, ok = strings.Cut(rest, "\n"+hExport)
+	if !ok {
+		t.Fatalf("missing export section: %q", got)
+	}
+	exportSec, summary, ok = strings.Cut(rest, "\nSummary: ")
+	if !ok {
+		t.Fatalf("missing summary: %q", got)
+	}
+	summary = "Summary: " + strings.TrimSuffix(summary, "\n")
+	return newSec, updatedSec, exportSec, summary
 }
 
 func TestLocatorFromDirName(t *testing.T) {

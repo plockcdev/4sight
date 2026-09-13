@@ -201,6 +201,15 @@ func TestHelpTopicSpecExport(t *testing.T) {
 	}
 }
 
+func TestHelpTopicSpecSyncDiff(t *testing.T) {
+	stdout, _ := capture(t, func() int {
+		return run([]string{"help", "spec", "sync-diff"}, deps{})
+	})
+	if !strings.Contains(stdout, "4sight spec sync-diff") {
+		t.Fatalf("help %q", stdout)
+	}
+}
+
 func TestHelpTopicSpecSyncCheck(t *testing.T) {
 	stdout, _ := capture(t, func() int {
 		return run([]string{"help", "spec", "sync-check"}, deps{})
@@ -246,6 +255,25 @@ func TestSpecExportDispatches(t *testing.T) {
 		t.Fatalf("code %d stderr %q", code, stderr)
 	}
 	if called != "/tmp/repo spec implement prompt cmd.md" {
+		t.Fatalf("called %q", called)
+	}
+}
+
+func TestSpecSyncDiffDispatches(t *testing.T) {
+	called := ""
+	code, _, stderr := captureCode(t, func() int {
+		return run([]string{"spec", "sync-diff"}, deps{
+			getwd: func() (string, error) { return "/tmp/repo", nil },
+			specSyncDiff: func(cwd string) error {
+				called = cwd
+				return nil
+			},
+		})
+	})
+	if code != 0 {
+		t.Fatalf("code %d stderr %q", code, stderr)
+	}
+	if called != "/tmp/repo" {
 		t.Fatalf("called %q", called)
 	}
 }

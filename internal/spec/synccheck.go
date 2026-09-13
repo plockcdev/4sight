@@ -37,18 +37,27 @@ func runSyncCheck(metadataRoot string, st store, stdout io.Writer) error {
 		dbBodies[specKey{dir: doc.Dir, name: doc.Name}] = doc.Body
 	}
 
-	var importCmds []string
+	var importNew []string
+	var importUpdated []string
 	var exportCmds []string
+	matching := 0
 	seen := make(map[specKey]bool)
 	for key, diskBody := range disk {
 		seen[key] = true
 		dbBody, ok := dbBodies[key]
-		if !ok || dbBody != diskBody {
-			imp, exp := syncCommands(key)
-			importCmds = append(importCmds, imp)
-			if ok && exp != "" {
-				exportCmds = append(exportCmds, exp)
-			}
+		if !ok {
+			imp, _ := syncCommands(key)
+			importNew = append(importNew, imp)
+			continue
+		}
+		if dbBody == diskBody {
+			matching++
+			continue
+		}
+		imp, exp := syncCommands(key)
+		importUpdated = append(importUpdated, imp)
+		if exp != "" {
+			exportCmds = append(exportCmds, exp)
 		}
 	}
 	for key := range dbBodies {
@@ -59,19 +68,30 @@ func runSyncCheck(metadataRoot string, st store, stdout io.Writer) error {
 			exportCmds = append(exportCmds, exp)
 		}
 	}
-	slices.Sort(importCmds)
+	slices.Sort(importNew)
+	slices.Sort(importUpdated)
 	slices.Sort(exportCmds)
 
-	if _, err := io.WriteString(stdout, "Import (overwrite database from disk):\n"); err != nil {
+	if _, err := io.WriteString(stdout, "Import new spec files (overwrite database from disk):\n"); err != nil {
 		return err
 	}
-	if err := writeCommands(stdout, importCmds); err != nil {
+	if err := writeCommands(stdout, importNew); err != nil {
+		return err
+	}
+	if _, err := io.WriteString(stdout, "\nImport updated spec files (overwrite database from disk):\n"); err != nil {
+		return err
+	}
+	if err := writeCommands(stdout, importUpdated); err != nil {
 		return err
 	}
 	if _, err := io.WriteString(stdout, "\nExport (overwrite disk from database):\n"); err != nil {
 		return err
 	}
-	return writeCommands(stdout, exportCmds)
+	if err := writeCommands(stdout, exportCmds); err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(stdout, "\nSummary: matching %d, not in db %d, mismatched %d\n", matching, len(importNew), len(importUpdated))
+	return err
 }
 
 func syncCommands(key specKey) (importCmd, exportCmd string) {

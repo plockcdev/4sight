@@ -9,4 +9,6 @@ separate args, then the file name, for example, for the cmd.md spec for
 
 If the file does not exist, fail
 
-Create a body entry in bodies table for the spec
+Create an body entry for the imported spec, remove trailing whitespace
+from lines, keep empty lines except at the end of the document
+

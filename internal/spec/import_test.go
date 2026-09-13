@@ -223,6 +223,24 @@ func TestUnifiedDiffEmptyPrior(t *testing.T) {
 	}
 }
 
+func TestUnifiedDiffPreservesUnchangedLines(t *testing.T) {
+	old := "# title\n\nunchanged line\n\nold line\n\nfooter\n"
+	new := "# title\n\nunchanged line\n\nnew line\n\nfooter\n"
+	got := unifiedDiff(old, new)
+	if strings.Contains(got, "-unchanged line") || strings.Contains(got, "+unchanged line") {
+		t.Fatalf("marked unchanged line as changed: %q", got)
+	}
+	if !strings.Contains(got, " unchanged line\n") {
+		t.Fatalf("missing unchanged context: %q", got)
+	}
+	if !strings.Contains(got, "-old line\n") || !strings.Contains(got, "+new line\n") {
+		t.Fatalf("missing changed lines: %q", got)
+	}
+	if strings.Count(got, "@@ ") != 1 {
+		t.Fatalf("expected one hunk, got %q", got)
+	}
+}
+
 func TestFindMetadataRoot(t *testing.T) {
 	dir := t.TempDir()
 	root := filepath.Join(dir, ".4sight")
@@ -285,9 +303,21 @@ func TestImportIntegration(t *testing.T) {
 		`CREATE TABLE spec.file_changes (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   file_id BIGINT UNSIGNED NOT NULL,
+  prior_file_change_id BIGINT UNSIGNED NULL,
   diff TEXT NOT NULL,
-  CONSTRAINT fk_file_changes_file_id FOREIGN KEY (file_id) REFERENCES spec.files (id)
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_file_changes_file_id FOREIGN KEY (file_id) REFERENCES spec.files (id),
+  CONSTRAINT fk_file_changes_prior_file_change_id FOREIGN KEY (prior_file_change_id) REFERENCES spec.file_changes (id),
+  CONSTRAINT file_changes_prior_not_self_chk CHECK (prior_file_change_id IS NULL OR prior_file_change_id != id)
 )`,
+		`CREATE UNIQUE INDEX file_changes_file_prior_uniq
+  ON spec.file_changes ((
+    IF(
+      prior_file_change_id IS NULL,
+      CONCAT(CAST(file_id AS CHAR), ':0'),
+      CONCAT(CAST(file_id AS CHAR), ':', CAST(prior_file_change_id AS CHAR))
+    )
+  ))`,
 		`ALTER TABLE spec.bodies
   ADD COLUMN file_change_id BIGINT UNSIGNED NOT NULL,
   ADD CONSTRAINT fk_bodies_file_change_id FOREIGN KEY (file_change_id) REFERENCES spec.file_changes (id)`,
@@ -309,6 +339,21 @@ func TestImportIntegration(t *testing.T) {
 	}
 	if len(rows) != 2 || rows[0][0] != "quote ' and\nnewline\n" || rows[1][0] != "top body\n" {
 		t.Fatalf("rows %v", rows)
+	}
+	writeFile(t, filepath.Join(root, "subcommands", "spec", "cmd.md"), "updated body\n")
+	if err := Import(dir, []string{"spec", "cmd.md"}); err != nil {
+		t.Fatal(err)
+	}
+	changes, err := store.queryCSV("SELECT id, file_id, prior_file_change_id FROM spec.file_changes WHERE file_id = 1 ORDER BY id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(changes) != 2 || changes[0][2] != "" || changes[1][2] != changes[0][0] {
+		t.Fatalf("file change chain %v", changes)
+	}
+	latest, ok, err := store.latestBody("subcommands/spec", "cmd.md")
+	if err != nil || !ok || latest != "updated body\n" {
+		t.Fatalf("latest body %q ok=%v err=%v", latest, ok, err)
 	}
 	dirs, err := store.queryCSV("SELECT path FROM spec.dirs ORDER BY path")
 	if err != nil {

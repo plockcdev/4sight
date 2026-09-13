@@ -17,6 +17,7 @@ type deps struct {
 	specImport          func(cwd string, loc []string) error
 	specExport          func(cwd string, loc []string) error
 	specSyncCheck       func(cwd string) error
+	specSyncDiff        func(cwd string) error
 	specImplementPrompt func(cwd string) error
 }
 
@@ -29,6 +30,7 @@ func Run(args []string) int {
 		specImport:          spec.Import,
 		specExport:          spec.Export,
 		specSyncCheck:       spec.SyncCheck,
+		specSyncDiff:        spec.SyncDiff,
 		specImplementPrompt: spec.ImplementPrompt,
 	})
 }
@@ -90,11 +92,14 @@ func runHelpTopic(topic []string) int {
 	case "spec sync-check":
 		printSpecSyncCheckHelp()
 		return 0
+	case "spec sync-diff":
+		printSpecSyncDiffHelp()
+		return 0
 	case "migrate import":
 		printMigrateImportHelp()
 		return 0
 	default:
-		fmt.Fprintf(os.Stderr, "4sight: unknown help topic %q (try: migrate, migrate up, migrate import, migrate implement prompt, spec, spec import, spec export, spec sync-check, spec implement prompt)\n", strings.Join(topic, " "))
+		fmt.Fprintf(os.Stderr, "4sight: unknown help topic %q (try: migrate, migrate up, migrate import, migrate implement prompt, spec, spec import, spec export, spec sync-check, spec sync-diff, spec implement prompt)\n", strings.Join(topic, " "))
 		return 1
 	}
 }
@@ -188,6 +193,8 @@ func parseSpec(args []string, d deps) int {
 		return parseSpecExport(args[1:], d)
 	case "sync-check":
 		return parseSpecSyncCheck(args[1:], d)
+	case "sync-diff":
+		return parseSpecSyncDiff(args[1:], d)
 	case "implement":
 		return parseSpecImplement(args[1:], d)
 	}
@@ -274,6 +281,36 @@ func parseSpecExport(args []string, d deps) int {
 	}
 	if err := d.specExport(cwd, args); err != nil {
 		fmt.Fprintln(os.Stderr, "4sight spec export:", err)
+		return 1
+	}
+	return 0
+}
+
+func parseSpecSyncDiff(args []string, d deps) int {
+	if len(args) == 1 {
+		switch args[0] {
+		case "-h", "--help":
+			printSpecSyncDiffHelp()
+			return 0
+		}
+	}
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "-") {
+			printSpecSyncDiffHelp()
+			return 1
+		}
+	}
+	if len(args) > 0 {
+		fmt.Fprintln(os.Stderr, "4sight spec sync-diff: does not take arguments")
+		return 1
+	}
+	cwd, err := d.getwd()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "4sight spec sync-diff:", err)
+		return 1
+	}
+	if err := d.specSyncDiff(cwd); err != nil {
+		fmt.Fprintln(os.Stderr, "4sight spec sync-diff:", err)
 		return 1
 	}
 	return 0
@@ -465,6 +502,7 @@ Commands:
   import            Import a spec file into bodies
   export            Write a spec body from the database to disk
   sync-check        Compare database bodies with on-disk spec files
+  sync-diff         Show unified diffs for spec differences
   implement         Generate implementation prompts from specs
 
 Options:
@@ -519,15 +557,30 @@ Options:
 `)
 }
 
+func printSpecSyncDiffHelp() {
+	fmt.Print(`4sight spec sync-diff
+
+Render unified diffs for specification bodies that differ between the
+spec database and on-disk design.md, cmd.md, coding.md, and schema
+spec files.
+
+This command takes no arguments.
+
+Options:
+  -h, --help        Show this help
+`)
+}
+
 func printSpecSyncCheckHelp() {
 	fmt.Print(`4sight spec sync-check
 
 Compare specification bodies in the database with on-disk design.md,
 cmd.md, and coding.md files.
 
-Prints an import section (overwrite the database from disk) and an
-export section (overwrite disk from the database) with commands for
-bodies that do not match.
+Prints three sections: import commands for new spec files, import
+commands for updated spec files, and export commands for bodies that
+do not match. Ends with a summary count of matching, not in db, and
+mismatched files.
 
 This command takes no arguments.
 

@@ -17,6 +17,11 @@ func newDoltStore(dataDir string) *doltStore {
 	return &doltStore{dataDir: dataDir}
 }
 
+const fileChangeHeadFilter = " NOT EXISTS (" +
+	"SELECT 1 FROM spec.file_changes newer" +
+	" WHERE newer.file_id = fc.file_id AND newer.prior_file_change_id = fc.id" +
+	")"
+
 func (s *doltStore) latestBody(dirPath, fileName string) (string, bool, error) {
 	query := "SELECT b.body FROM spec.bodies b" +
 		" JOIN spec.file_changes fc ON fc.id = b.file_change_id" +
@@ -24,7 +29,8 @@ func (s *doltStore) latestBody(dirPath, fileName string) (string, bool, error) {
 		" JOIN spec.dirs d ON d.id = f.dir_id" +
 		" WHERE d.path = " + sqlString(dirPath) +
 		" AND f.name = " + sqlString(fileName) +
-		" ORDER BY fc.id DESC LIMIT 1"
+		" AND" + fileChangeHeadFilter +
+		" LIMIT 1"
 	rows, err := s.queryCSV(query)
 	if err != nil {
 		return "", false, err
@@ -40,7 +46,8 @@ func (s *doltStore) listLatestBodies() ([]specDoc, error) {
 		" JOIN spec.file_changes fc ON fc.id = b.file_change_id" +
 		" JOIN spec.files f ON f.id = fc.file_id" +
 		" JOIN spec.dirs d ON d.id = f.dir_id" +
-		" ORDER BY d.path, f.name, fc.id"
+		" WHERE" + fileChangeHeadFilter +
+		" ORDER BY d.path, f.name"
 	rows, err := s.queryCSV(query)
 	if err != nil {
 		return nil, err
@@ -65,6 +72,14 @@ func (s *doltStore) listLatestBodies() ([]specDoc, error) {
 	return docs, nil
 }
 
+func (s *doltStore) latestFileChangeID(fileID uint64) (uint64, bool, error) {
+	query := fmt.Sprintf(
+		"SELECT fc.id FROM spec.file_changes fc WHERE fc.file_id = %d AND"+fileChangeHeadFilter+" ORDER BY fc.id DESC LIMIT 1",
+		fileID,
+	)
+	return s.lookupID(query)
+}
+
 func (s *doltStore) insertSpec(dirPath, fileName, body, diff string) error {
 	dirID, err := s.ensureDir(dirPath)
 	if err != nil {
@@ -74,10 +89,23 @@ func (s *doltStore) insertSpec(dirPath, fileName, body, diff string) error {
 	if err != nil {
 		return err
 	}
-	if err := s.run("sql", "-q", fmt.Sprintf(
-		"INSERT INTO spec.file_changes (file_id, diff) VALUES (%d, %s)",
-		fileID, sqlBodyLiteral(diff),
-	)); err != nil {
+	priorID, hasPrior, err := s.latestFileChangeID(fileID)
+	if err != nil {
+		return err
+	}
+	var insertChange string
+	if hasPrior {
+		insertChange = fmt.Sprintf(
+			"INSERT INTO spec.file_changes (file_id, diff, prior_file_change_id) VALUES (%d, %s, %d)",
+			fileID, sqlBodyLiteral(diff), priorID,
+		)
+	} else {
+		insertChange = fmt.Sprintf(
+			"INSERT INTO spec.file_changes (file_id, diff) VALUES (%d, %s)",
+			fileID, sqlBodyLiteral(diff),
+		)
+	}
+	if err := s.run("sql", "-q", insertChange); err != nil {
 		return err
 	}
 	changeID, ok, err := s.lookupID(fmt.Sprintf(
