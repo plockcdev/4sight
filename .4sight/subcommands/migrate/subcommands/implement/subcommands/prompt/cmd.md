@@ -5,7 +5,8 @@ Output will be a prompt to instruct an agent to read spec and generate a migrati
 ## Prompt Output Specification
 
 Tell agent to read all the design.md and cmd.md docs to inform what the schema needs to provide
-(list the files that exist)
+(list the files that exist), inferring indexes, foreign keys, primary keys, constraints like
+uniqueness, etc.
 
 program will determine the last submitted spec for that db by looking in the migrations dir
 for that db, and seeing what submitted points to. This will be known as the parent.
