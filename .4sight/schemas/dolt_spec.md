@@ -25,12 +25,18 @@ give the full text
 
 No body exists for a file that has never been changed for the given state.
 
-the referenced file change must be the last file change for this file on the change sequence for this state
+the referenced file change must be the last file change for this file on the change sequence for this state's change, note that the last file change can be on an earlier
+change than the state referenced change if no following changes to that file were
+made
 
 ## changes
 
 Change is
 
+- an identifier in the form of `ch-001` where the last goes up to 999, then
+  the increment the most significant char from a-z until reaching zzz.
+  Example 001, 002, ...998, 999, a00, a01, ... b00, ...z99, za0, za1, ...zzz
+  It is globally unique
 - a prompt which is the prompt text recording the original user's change request of
   the spec for the product
 - second resolution date + time when the change was created
@@ -49,9 +55,6 @@ A change sequence is the root node path through the tree to any change node.
 
 Captures an agentic review of a change
 
-- name: name for the referenced change.  globally unique, must start with letter
-  or number, must be lowercase, and be only letters, numbers, or hyphen, and
-  limited to 12 chars.
 - change: reference to which change this review is for, only one change_review
   per change
 - why: justification for the change, might be directly provided but also can be
@@ -61,13 +64,13 @@ Captures an agentic review of a change
 - description: paragraph or less summarizing the change if the summary is not
     enough
 - details - full detail of the change if description is not enough
-- score: how ready the change is for implementation as a percentage
 - review: review of the spec change for quality of specification and logic consistency
+- ready: true/false if spec meets minimum specification to implement the change
 
 The change review for the root change should be created by migration with
 empty strings for description/details:
 
-- name: initial
+- id: `ch-000`
   why: to provide an anchor for all changes
   summary: initialization
   review: perfect

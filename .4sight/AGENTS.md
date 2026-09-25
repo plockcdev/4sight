@@ -59,3 +59,8 @@ If user asks you to implement code spec (or doesn't specify which kind of spec),
 run `4sight spec implement prompt` and then follow the prompt
 
 Do not update any code or schema specs during implementation
+
+# Handling spec change requests
+
+When the user requests a change to the spec, run `4sight spec change request <prompt>`
+where prompt is their request

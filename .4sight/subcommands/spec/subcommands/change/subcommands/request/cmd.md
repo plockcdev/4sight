@@ -1,5 +1,12 @@
 # 4sight spec change request `<prompt>`
 
 Persist a user's prompt as a new "change"
-the rest of the change's info will
-be filled out by agent during another command.
+
+Make the new change a child of the workspace change and update current change for
+the workspace
+
+Print this yaml:
+
+```yaml
+- id: new change id
+```
