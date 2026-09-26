@@ -9,6 +9,7 @@ only commences when the db and filesystem agrees.
 
 The response format, each changed file should only have 1 review, each db attribute
 should be filled out that the submit command can't figure out.
+The body summary is for the current workspace body for the file.
 
 ```
 {
@@ -16,8 +17,8 @@ should be filled out that the submit command can't figure out.
     ... attributes of change_review
   }
   "file_reviews": [
-    {... attributes of file_change_review},
-    {... attributes of file_change_review}
+    {... attributes of file_change_review, and full body summary},
+    {... attributes of file_change_review, and full body summary}
   ]
 }
 

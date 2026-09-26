@@ -7,7 +7,8 @@ Follow instructions below, organized into sections
 
 ## Verify In Sync
 
-Scan all command dirs for supported spec filenames and scan db for all "workspace" bodies.
+Scan all command dirs and schema dir for supported spec filenames and scan db for
+all "workspace" bodies.
 For each, check if the on disk text matches db body, or missing a counterpart.
 
 Any out of sync files not indicated in the prompt as included in the change
@@ -54,5 +55,4 @@ Tell agent to submit a qualitative review of the spec changes
 compared to the submitted change (including any due to the prompt), running
 `4sight spec change review agent response`
 The agent should stream
-a json body that provides all expected data for a change review and
-for all the file change reviews.
+a json body providing all expected data.

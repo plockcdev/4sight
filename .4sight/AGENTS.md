@@ -30,17 +30,19 @@ When no qualifier such as "schema" for specs, then code specs are assumed.
 The program design is split across design.md files within the subcommand structure
 
 - `design.md` - design for the entire program
+- `coding.md` - coding standards for entire program
 - `main/design.md` - design specific to the main command
 - `subcommands/*/design.md` - design files for each subcommand
 
-Each subcommand can have subcommands with their own design docs and subcommands.
+Each subcommand can have subcommands with their own design docs, coding standards,
+and subcommands.
 
 The design is inherited from parent design files, so the entire path of design files
 have to be read to understand a given subcommand's design.
 
 The design may include db usage, but not SQL DDL or statements.
 
-It is OK to not have a design.md within a given command directory.
+It is OK to not have a design.md or coding.md within a given command directory.
 
 There is a cmd.md that is a peer to the design.md, it gives particular specification
 for the cli command like input args, env vars, flags, etc. how it behaves, and how
