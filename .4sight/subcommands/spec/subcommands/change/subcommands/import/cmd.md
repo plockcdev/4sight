@@ -27,4 +27,5 @@ Print this yaml:
 id: new change id
 file_changes:
   - path: path of file change relative to .4sight
+    summary: the +/- count of lines in the diff
 ```
