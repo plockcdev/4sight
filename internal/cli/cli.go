@@ -19,6 +19,7 @@ type deps struct {
 	specSyncCheck       func(cwd string) error
 	specSyncDiff        func(cwd string) error
 	specImplementPrompt func(cwd string) error
+	specChangeImport    func(cwd string) error
 }
 
 func Run(args []string) int {
@@ -32,6 +33,7 @@ func Run(args []string) int {
 		specSyncCheck:       spec.SyncCheck,
 		specSyncDiff:        spec.SyncDiff,
 		specImplementPrompt: spec.ImplementPrompt,
+		specChangeImport:    spec.ChangeImport,
 	})
 }
 
@@ -95,11 +97,17 @@ func runHelpTopic(topic []string) int {
 	case "spec sync-diff":
 		printSpecSyncDiffHelp()
 		return 0
+	case "spec change":
+		printSpecChangeHelp()
+		return 0
+	case "spec change import":
+		printSpecChangeImportHelp()
+		return 0
 	case "migrate import":
 		printMigrateImportHelp()
 		return 0
 	default:
-		fmt.Fprintf(os.Stderr, "4sight: unknown help topic %q (try: migrate, migrate up, migrate import, migrate implement prompt, spec, spec import, spec export, spec sync-check, spec sync-diff, spec implement prompt)\n", strings.Join(topic, " "))
+		fmt.Fprintf(os.Stderr, "4sight: unknown help topic %q (try: migrate, migrate up, migrate import, migrate implement prompt, spec, spec import, spec export, spec sync-check, spec sync-diff, spec implement prompt, spec change, spec change import)\n", strings.Join(topic, " "))
 		return 1
 	}
 }
@@ -197,6 +205,8 @@ func parseSpec(args []string, d deps) int {
 		return parseSpecSyncDiff(args[1:], d)
 	case "implement":
 		return parseSpecImplement(args[1:], d)
+	case "change":
+		return parseSpecChange(args[1:], d)
 	}
 	if strings.HasPrefix(args[0], "-") {
 		printSpecHelp()
@@ -251,6 +261,56 @@ func parseSpecImplementPrompt(args []string, d deps) int {
 	}
 	if err := d.specImplementPrompt(cwd); err != nil {
 		fmt.Fprintln(os.Stderr, "4sight spec implement prompt:", err)
+		return 1
+	}
+	return 0
+}
+
+func parseSpecChange(args []string, d deps) int {
+	if len(args) == 0 {
+		printSpecChangeHelp()
+		return 0
+	}
+	switch args[0] {
+	case "-h", "--help":
+		printSpecChangeHelp()
+		return 0
+	case "import":
+		return parseSpecChangeImport(args[1:], d)
+	}
+	if strings.HasPrefix(args[0], "-") {
+		printSpecChangeHelp()
+		return 1
+	}
+	fmt.Fprintf(os.Stderr, "4sight spec change: unknown command %q\n", args[0])
+	return 1
+}
+
+func parseSpecChangeImport(args []string, d deps) int {
+	if len(args) == 1 {
+		switch args[0] {
+		case "-h", "--help":
+			printSpecChangeImportHelp()
+			return 0
+		}
+	}
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "-") {
+			printSpecChangeImportHelp()
+			return 1
+		}
+	}
+	if len(args) > 0 {
+		fmt.Fprintln(os.Stderr, "4sight spec change import: does not take arguments")
+		return 1
+	}
+	cwd, err := d.getwd()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "4sight spec change import:", err)
+		return 1
+	}
+	if err := d.specChangeImport(cwd); err != nil {
+		fmt.Fprintln(os.Stderr, "4sight spec change import:", err)
 		return 1
 	}
 	return 0
@@ -500,6 +560,7 @@ Import, export, and check specification bodies in the spec database.
 
 Commands:
   import            Import a spec file into bodies
+  change            Record filesystem spec changes as a change
   export            Write a spec body from the database to disk
   sync-check        Compare database bodies with on-disk spec files
   sync-diff         Show unified diffs for spec differences
@@ -531,6 +592,42 @@ bodies from the spec database, plus schema specifications on disk, then
 update application code to match without changing the schema. If a schema
 spec or migration change is required, the agent should stop and report the
 gap.
+
+This command takes no arguments.
+
+Options:
+  -h, --help        Show this help
+`)
+}
+
+func printSpecChangeHelp() {
+	fmt.Print(`4sight spec change
+
+Record specification filesystem changes in the spec database.
+
+Commands:
+  import            Persist filesystem spec deltas as a workspace change
+
+Options:
+  -h, --help        Show this help
+`)
+}
+
+func printSpecChangeImportHelp() {
+	fmt.Print(`4sight spec change import
+
+Persist filesystem changes to spec files as a new change.
+
+When spec files differ from workspace bodies, creates a child of the
+current workspace change with an empty prompt, records a file change
+for each delta, and updates the workspace pointer. Trailing whitespace
+and empty lines at the end of a file are ignored.
+
+If nothing differs, prints "no changes found" to stderr and exits
+successfully.
+
+Prints YAML with the new change id and each file change path and
++/- line summary.
 
 This command takes no arguments.
 

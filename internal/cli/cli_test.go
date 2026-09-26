@@ -347,6 +347,61 @@ func TestSpecImportDispatches(t *testing.T) {
 	}
 }
 
+func TestHelpTopicSpecChangeImport(t *testing.T) {
+	stdout, _ := capture(t, func() int {
+		return run([]string{"help", "spec", "change", "import"}, deps{})
+	})
+	if !strings.Contains(stdout, "4sight spec change import") {
+		t.Fatalf("help %q", stdout)
+	}
+	if !strings.Contains(stdout, "no changes found") {
+		t.Fatalf("help missing empty case: %q", stdout)
+	}
+}
+
+func TestSpecChangeImportRejectsArgs(t *testing.T) {
+	code, _, stderr := captureCode(t, func() int {
+		return run([]string{"spec", "change", "import", "extra"}, deps{})
+	})
+	if code != 1 {
+		t.Fatalf("code %d", code)
+	}
+	if !strings.Contains(stderr, "does not take arguments") {
+		t.Fatalf("stderr %q", stderr)
+	}
+}
+
+func TestSpecChangeImportDispatches(t *testing.T) {
+	called := ""
+	code, _, stderr := captureCode(t, func() int {
+		return run([]string{"spec", "change", "import"}, deps{
+			getwd: func() (string, error) { return "/tmp/repo", nil },
+			specChangeImport: func(cwd string) error {
+				called = cwd
+				return nil
+			},
+		})
+	})
+	if code != 0 {
+		t.Fatalf("code %d stderr %q", code, stderr)
+	}
+	if called != "/tmp/repo" {
+		t.Fatalf("called %q", called)
+	}
+}
+
+func TestSpecChangeUnknownCommand(t *testing.T) {
+	code, _, stderr := captureCode(t, func() int {
+		return run([]string{"spec", "change", "nope"}, deps{})
+	})
+	if code != 1 {
+		t.Fatalf("code %d", code)
+	}
+	if !strings.Contains(stderr, `unknown command "nope"`) {
+		t.Fatalf("stderr %q", stderr)
+	}
+}
+
 func TestMigrateImplementPromptDispatches(t *testing.T) {
 	called := ""
 	code, _, stderr := captureCode(t, func() int {
