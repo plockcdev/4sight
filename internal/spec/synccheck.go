@@ -22,84 +22,74 @@ type specKey struct {
 	name string
 }
 
-func runSyncCheck(metadataRoot string, st store, stdout io.Writer) error {
-	docs, err := st.listLatestBodies()
+type workspaceBodyStore interface {
+	listWorkspaceBodies() ([]specDoc, error)
+}
+
+func runSyncCheck(metadataRoot string, st workspaceBodyStore, stdout io.Writer) error {
+	docs, err := st.listWorkspaceBodies()
 	if err != nil {
-		return fmt.Errorf("list spec bodies: %w", err)
+		return fmt.Errorf("list workspace bodies: %w", err)
 	}
 	disk, err := listOnDiskCodeSpecs(metadataRoot)
 	if err != nil {
 		return err
 	}
 
-	dbBodies := make(map[specKey]string)
+	dbBodies := make(map[specKey]string, len(docs))
 	for _, doc := range docs {
 		dbBodies[specKey{dir: doc.Dir, name: doc.Name}] = doc.Body
 	}
-
-	var importNew []string
-	var importUpdated []string
-	var exportCmds []string
-	matching := 0
-	seen := make(map[specKey]bool)
-	for key, diskBody := range disk {
-		seen[key] = true
-		dbBody, ok := dbBodies[key]
-		if !ok {
-			imp, _ := syncCommands(key)
-			importNew = append(importNew, imp)
-			continue
-		}
-		if dbBody == diskBody {
-			matching++
-			continue
-		}
-		imp, exp := syncCommands(key)
-		importUpdated = append(importUpdated, imp)
-		if exp != "" {
-			exportCmds = append(exportCmds, exp)
-		}
+	keys := make(map[specKey]bool, len(disk)+len(dbBodies))
+	for key := range disk {
+		keys[key] = true
 	}
 	for key := range dbBodies {
-		if seen[key] {
+		keys[key] = true
+	}
+
+	needsImport := false
+	var exportCmds []string
+	for key := range keys {
+		rawDisk, onDisk, err := diskSpec(metadataRoot, disk, key)
+		if err != nil {
+			return err
+		}
+		dbText := ""
+		_, inDB := dbBodies[key]
+		if inDB {
+			dbText = normalizeSpecBody(dbBodies[key])
+		}
+		diskText := ""
+		if onDisk {
+			diskText = normalizeSpecBody(rawDisk)
+		}
+		if dbText == diskText {
 			continue
 		}
-		if _, exp := syncCommands(key); exp != "" {
-			exportCmds = append(exportCmds, exp)
+		needsImport = true
+		if !inDB || key.dir == "schemas" {
+			continue
 		}
+		loc := strings.Join(locatorFromDirName(key.dir, key.name), " ")
+		exportCmds = append(exportCmds, "4sight spec export "+loc)
 	}
-	slices.Sort(importNew)
-	slices.Sort(importUpdated)
 	slices.Sort(exportCmds)
 
-	if _, err := io.WriteString(stdout, "Import new spec files (overwrite database from disk):\n"); err != nil {
+	var importCmds []string
+	if needsImport {
+		importCmds = []string{"4sight spec change import"}
+	}
+	if _, err := io.WriteString(stdout, "Import (overwrite database from disk):\n"); err != nil {
 		return err
 	}
-	if err := writeCommands(stdout, importNew); err != nil {
-		return err
-	}
-	if _, err := io.WriteString(stdout, "\nImport updated spec files (overwrite database from disk):\n"); err != nil {
-		return err
-	}
-	if err := writeCommands(stdout, importUpdated); err != nil {
+	if err := writeCommands(stdout, importCmds); err != nil {
 		return err
 	}
 	if _, err := io.WriteString(stdout, "\nExport (overwrite disk from database):\n"); err != nil {
 		return err
 	}
-	if err := writeCommands(stdout, exportCmds); err != nil {
-		return err
-	}
-	_, err = fmt.Fprintf(stdout, "\nSummary: matching %d, not in db %d, mismatched %d\n", matching, len(importNew), len(importUpdated))
-	return err
-}
-
-func syncCommands(key specKey) (importCmd, exportCmd string) {
-	if key.dir == "schemas" {
-		return "4sight migrate import " + key.name, ""
-	}
-	loc := strings.Join(locatorFromDirName(key.dir, key.name), " ")
-	return "4sight spec import " + loc, "4sight spec export " + loc
+	return writeCommands(stdout, exportCmds)
 }
 
 func writeCommands(stdout io.Writer, cmds []string) error {

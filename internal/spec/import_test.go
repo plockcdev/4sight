@@ -31,6 +31,10 @@ func (f *fakeStore) insertSpec(dirPath, fileName, body, diff string) error {
 	return nil
 }
 
+func (f *fakeStore) listWorkspaceBodies() ([]specDoc, error) {
+	return f.listLatestBodies()
+}
+
 func (f *fakeStore) listLatestBodies() ([]specDoc, error) {
 	latest := make(map[string]specDoc)
 	var order []string

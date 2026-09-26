@@ -671,13 +671,14 @@ Options:
 func printSpecSyncCheckHelp() {
 	fmt.Print(`4sight spec sync-check
 
-Compare specification bodies in the database with on-disk design.md,
-cmd.md, and coding.md files.
+Compare workspace specification bodies with on-disk spec files in both
+directions. Trailing whitespace and empty lines at the end of a file
+are ignored.
 
-Prints three sections: import commands for new spec files, import
-commands for updated spec files, and export commands for bodies that
-do not match. Ends with a summary count of matching, not in db, and
-mismatched files.
+Prints two sections. The import section shows "4sight spec change import"
+when any spec differs, which overwrites the database from disk. The
+export section lists "4sight spec export <command...> <file>" for each
+workspace body that differs from disk.
 
 This command takes no arguments.
 
