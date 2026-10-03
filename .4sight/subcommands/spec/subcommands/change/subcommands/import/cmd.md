@@ -13,7 +13,7 @@ and for all db "workspace" bodies and for each:
 
 - if the "workspace" body does not exist, treat as new spec
 - if the workspace body does exist, but local file does not, the spec diff is removing
-  the entire contents of the spec
+  the entire contents of the spec, leaving an empty body
 - if db and file differs, the file is the updated version
 - create the "workspace" body for the file, without summary, and remove
   the prior "workspace" body if it existed

@@ -2,6 +2,9 @@
 
 The database will store specification data
 
+Commands that insert or update any row in the spec database must satisfy every constraint and system-maintained column defined in this document,
+Individual command specifications do not restate these rules, obeying them is implicit.
+
 ## bodies
 
 A body is
@@ -14,7 +17,7 @@ A body is
   for this file, its file reference must match ours
 - state: one of the kinds of "current changes", implemented, submitted, workspace
 - ieee_crc32: checksum of the body, should always be set
-- summary: 65 character or less summary of what the body specifies
+- summary: 65 character or less summary of what the body text specifies
 
 The body is a full text of the file change for its file (one body per file per state)
 
@@ -58,13 +61,13 @@ Captures an agentic review of a change
 - change: reference to which change this review is for, only one change_review
   per change
 - why: justification for the change, might be directly provided but also can be
-    inferred by agent
+    inferred by agent, must be non-empty
 - summary: 65 character or less summary of the change to distinguish it from
-    other specs in a list
+    other specs in a list, must be non-empty
 - description: paragraph or less summarizing the change if the summary is not
     enough
 - details - full detail of the change if description is not enough
-- review: review of the spec change for quality of specification and logic consistency
+- review: review of the spec change for quality of specification and logic consistency, must be non-empty
 - ready: true/false if spec meets minimum specification to implement the change
 
 The change review for the root change should be created by migration with
@@ -74,7 +77,7 @@ empty strings for description/details:
   why: to provide an anchor for all changes
   summary: initialization
   review: perfect
-  score: 100
+  ready: true
 
 ## current_changes
 
@@ -86,6 +89,8 @@ This will be initialized by migration, after which:
 
 - there must not be more than one set of current changes
 - the change references must always be set
+- workspace can be the same as submitted or a descendant of submitted
+- submitted can be the same as implemented or a descendant of implemented
 
 ## file_changes
 
@@ -107,19 +112,18 @@ If no previous file change found, baseline is empty string.
 
 ## file_change_reviews
 
-- agent will provide:
-  - file change: reference to which file change this review is for
-  - details - full detail of the file change if description is not enough
-  - description: agent provided paragraph or less summarizing the file change
-    if the summary is not enough
-  - why: justification of the file change
-  - summary: agent provided 65 character or less summary of the file change to
-    distinguish it from other specs
+- file change: reference to which file change this review is for
+- details - full narrative detail if needed to expand on the description
+- description: narrative paragraph if needed to extend the summary
+- why: justification of the file change
+- summary: 65 character or less summary of the file change with respect to
+  the current submitted change pointer, semantically
 
 there is at most one file_change_review per file_change
 
 all fields must be set, but details can be empty, and description can be empty
-if details is empty, the rest must be non-empty
+if details is empty, the rest must be non-empty.  Constraints not easily
+defined in the db should be handled by app.
 
 ## files
 

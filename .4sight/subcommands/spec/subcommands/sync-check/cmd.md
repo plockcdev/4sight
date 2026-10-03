@@ -1,12 +1,13 @@
 # 4sight spec sync-check
 
 Checks if the collection of workspace bodies in the database matches the on disk
-spec files in both directions,
+spec files in both directions (check for missing bodies),
 but compare without considering whitespace at end of lines and empty lines at the
 end of the document (as we clear those on import)
 
 Output two sections, one for user to import, and other for user to export bodies
-that are not matching.
+that are not matching.  The import section should call out any new files that would
+be imported.
 
 Example export command to overwrite what is on disk:
 `4sight spec export <submcommand locator> <filename>`
