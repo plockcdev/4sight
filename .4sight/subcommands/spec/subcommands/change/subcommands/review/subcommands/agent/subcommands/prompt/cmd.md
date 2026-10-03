@@ -25,6 +25,12 @@ Any out of sync files tell user the status for each out of sync file
 (including +/- line count) and how to remediate
 (e.g. overwrite local files with db body, or do a change import), then stop.
 
+## Verify Prompt or unreviewed changes
+
+If the prompt is not empty, continue to next section.
+
+If the current workspace change pointer has no file changes missing reviews, then tell the user there is nothing to review and stop.
+
 ## Render meta info
 
 Render the meta info.
@@ -61,8 +67,11 @@ reviewed, the specs get reviewed.
 
 ## Importing Spec Changes Due to User Prompt
 
-If there were spec changes due to user prompt, output prompt should
+If there were spec changes due to user prompt,
 tell agent to run `4sight spec change import` to pick up the changes, and it will move the current workspace pointer.
+
+If there were no spec changes due to user prompt, tell user no review is needed for the prompt
+as there were no spec changes, then stop.
 
 ## Response
 
