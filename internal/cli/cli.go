@@ -10,30 +10,34 @@ import (
 )
 
 type deps struct {
-	getwd               func() (string, error)
-	up                  func(cwd string) error
-	implementPrompt     func(cwd, schemaRel string) error
-	migrateImport       func(cwd, schemaRel string) error
-	specImport          func(cwd string, loc []string) error
-	specExport          func(cwd string, loc []string) error
-	specSyncCheck       func(cwd string) error
-	specSyncDiff        func(cwd string) error
-	specImplementPrompt func(cwd string) error
-	specChangeImport    func(cwd string) error
+	getwd                    func() (string, error)
+	up                       func(cwd string) error
+	implementPrompt          func(cwd, schemaRel string) error
+	migrateImport            func(cwd, schemaRel string) error
+	specImport               func(cwd string, loc []string) error
+	specExport               func(cwd string, loc []string) error
+	specSyncCheck            func(cwd string) error
+	specSyncDiff             func(cwd string) error
+	specImplementPrompt      func(cwd string) error
+	specChangeImport         func(cwd string) error
+	specChangeReviewPrompt   func(cwd string) error
+	specChangeReviewResponse func(cwd string) error
 }
 
 func Run(args []string) int {
 	return run(args, deps{
-		getwd:               os.Getwd,
-		up:                  migrate.Up,
-		implementPrompt:     migrate.ImplementPrompt,
-		migrateImport:       spec.ImportSchema,
-		specImport:          spec.Import,
-		specExport:          spec.Export,
-		specSyncCheck:       spec.SyncCheck,
-		specSyncDiff:        spec.SyncDiff,
-		specImplementPrompt: spec.ImplementPrompt,
-		specChangeImport:    spec.ChangeImport,
+		getwd:                    os.Getwd,
+		up:                       migrate.Up,
+		implementPrompt:          migrate.ImplementPrompt,
+		migrateImport:            spec.ImportSchema,
+		specImport:               spec.Import,
+		specExport:               spec.Export,
+		specSyncCheck:            spec.SyncCheck,
+		specSyncDiff:             spec.SyncDiff,
+		specImplementPrompt:      spec.ImplementPrompt,
+		specChangeImport:         spec.ChangeImport,
+		specChangeReviewPrompt:   spec.ChangeReviewAgentPrompt,
+		specChangeReviewResponse: spec.ChangeReviewAgentResponse,
 	})
 }
 
@@ -102,6 +106,18 @@ func runHelpTopic(topic []string) int {
 		return 0
 	case "spec change import":
 		printSpecChangeImportHelp()
+		return 0
+	case "spec change review":
+		printSpecChangeReviewHelp()
+		return 0
+	case "spec change review agent":
+		printSpecChangeReviewAgentHelp()
+		return 0
+	case "spec change review agent prompt":
+		printSpecChangeReviewPromptHelp()
+		return 0
+	case "spec change review agent response":
+		printSpecChangeReviewResponseHelp()
 		return 0
 	case "migrate import":
 		printMigrateImportHelp()
@@ -277,12 +293,74 @@ func parseSpecChange(args []string, d deps) int {
 		return 0
 	case "import":
 		return parseSpecChangeImport(args[1:], d)
+	case "review":
+		return parseSpecChangeReview(args[1:], d)
 	}
 	if strings.HasPrefix(args[0], "-") {
 		printSpecChangeHelp()
 		return 1
 	}
 	fmt.Fprintf(os.Stderr, "4sight spec change: unknown command %q\n", args[0])
+	return 1
+}
+
+func parseSpecChangeReview(args []string, d deps) int {
+	if len(args) == 0 {
+		printSpecChangeReviewHelp()
+		return 0
+	}
+	switch args[0] {
+	case "-h", "--help":
+		printSpecChangeReviewHelp()
+		return 0
+	case "agent":
+		return parseSpecChangeReviewAgent(args[1:], d)
+	}
+	fmt.Fprintf(os.Stderr, "4sight spec change review: unknown command %q\n", args[0])
+	return 1
+}
+
+func parseSpecChangeReviewAgent(args []string, d deps) int {
+	if len(args) == 0 {
+		printSpecChangeReviewAgentHelp()
+		return 0
+	}
+	switch args[0] {
+	case "-h", "--help":
+		printSpecChangeReviewAgentHelp()
+		return 0
+	case "prompt":
+		if len(args) != 1 {
+			fmt.Fprintln(os.Stderr, "4sight spec change review agent prompt: takes no arguments")
+			return 1
+		}
+		cwd, err := d.getwd()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "4sight spec change review agent prompt:", err)
+			return 1
+		}
+		if err := d.specChangeReviewPrompt(cwd); err != nil {
+			fmt.Fprintln(os.Stderr, "4sight spec change review agent prompt:", err)
+			return 1
+		}
+		return 0
+	case "response":
+		if len(args) != 1 {
+			fmt.Fprintln(os.Stderr, "4sight spec change review agent response: takes no arguments")
+			return 1
+		}
+		cwd, err := d.getwd()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "4sight spec change review agent response:", err)
+			return 1
+		}
+		if err := d.specChangeReviewResponse(cwd); err != nil {
+			fmt.Fprintln(os.Stderr, "4sight spec change review agent response:", err)
+			return 1
+		}
+		return 0
+	}
+	fmt.Fprintf(os.Stderr, "4sight spec change review agent: unknown command %q\n", args[0])
 	return 1
 }
 
@@ -607,6 +685,7 @@ Record specification filesystem changes in the spec database.
 
 Commands:
   import            Persist filesystem spec deltas as a workspace change
+  review            Review changes to the specification
 
 Options:
   -h, --help        Show this help
@@ -634,6 +713,19 @@ This command takes no arguments.
 Options:
   -h, --help        Show this help
 `)
+}
+
+func printSpecChangeReviewHelp() {
+	fmt.Print("4sight spec change review\n\nCommands:\n  agent             Generate or submit an agent review\n\n")
+}
+func printSpecChangeReviewAgentHelp() {
+	fmt.Print("4sight spec change review agent\n\nCommands:\n  prompt            Output review instructions\n  response          Read and persist a JSON review from stdin\n\n")
+}
+func printSpecChangeReviewPromptHelp() {
+	fmt.Print("4sight spec change review agent prompt\n\nOutput instructions for reviewing the workspace spec change.\n\n")
+}
+func printSpecChangeReviewResponseHelp() {
+	fmt.Print("4sight spec change review agent response\n\nRead one JSON review from stdin and persist it for the workspace change.\n\n")
 }
 
 func printSpecExportHelp() {

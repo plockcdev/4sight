@@ -43,10 +43,9 @@ func (s *doltStore) latestBody(dirPath, fileName string) (string, bool, error) {
 
 func (s *doltStore) listLatestBodies() ([]specDoc, error) {
 	query := "SELECT d.path, f.name, b.body FROM spec.bodies b" +
-		" JOIN spec.file_changes fc ON fc.id = b.file_change_id" +
-		" JOIN spec.files f ON f.id = fc.file_id" +
+		" JOIN spec.files f ON f.id = b.file_id" +
 		" JOIN spec.dirs d ON d.id = f.dir_id" +
-		" WHERE" + fileChangeHeadFilter +
+		" WHERE b.state = 'workspace'" +
 		" ORDER BY d.path, f.name"
 	rows, err := s.queryCSV(query)
 	if err != nil {
