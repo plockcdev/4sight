@@ -31,7 +31,9 @@ The actual prompt/response spec is an internal implementation detail and not
 part of application specification. If it needs a schema itself (such as a json
 schema), then write it to `.4sight/<command path>/agent/responseSchema.<filetype
 for schema definition>` so that the implementation of the response can interpret
-it and the prompt can provide it to agent.
+it and the prompt can provide it to agent. The schema should include as many
+constraints specified by the db schema, if can't natively be done in the
+response schema then provide as value descriptions.
 
 ### Agent Prompt
 
