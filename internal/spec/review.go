@@ -81,6 +81,15 @@ func runChangeReviewPrompt(root string, st *doltStore, out io.Writer) error {
 		specs = append(specs, specRelPath(d.Dir, d.Name))
 	}
 	slices.Sort(specs)
+	removed, err := st.removedSpecPaths()
+	if err != nil {
+		return err
+	}
+	schemas, err := listSchemaSpecs(filepath.Join(root, "schemas"))
+	if err != nil {
+		return err
+	}
+	projectRoot := filepath.Dir(root)
 	var b strings.Builder
 	b.WriteString("Review the current unsubmitted specification changes for quality and consistency.\n\n")
 	b.WriteString(meta)
@@ -88,18 +97,32 @@ func runChangeReviewPrompt(root string, st *doltStore, out io.Writer) error {
 	for _, p := range specs {
 		fmt.Fprintf(&b, "- %s\n", p)
 	}
-	fmt.Fprintf(&b, "\nComposite diff: %s\n\nRead the composite diff to review all changes since the submitted pointer. Read the full workspace spec for every file in the diff, plus related specifications such as schema specs and parent command design docs.\n", relFromMetadata(root, diffPath))
-	fmt.Fprintf(&b, "\nResponse schema: %s\n", filepath.ToSlash(filepath.Join("subcommands", "spec", "subcommands", "change", "subcommands", "review", "subcommands", "agent", "responseSchema.json")))
+	b.WriteString("\nRemoved Specs\n")
+	if len(removed) == 0 {
+		b.WriteString("(none)\n")
+	} else {
+		for _, p := range removed {
+			fmt.Fprintf(&b, "- %s\n", p)
+		}
+	}
+	b.WriteString("\nDatabase Schema Specs\n")
+	for _, schema := range schemas {
+		fmt.Fprintf(&b, "- %s\n", relFromProject(projectRoot, schema))
+	}
+	diffProjectPath := filepath.ToSlash(filepath.Join(".4sight", "changes", state.Workspace, "unified.diff"))
+	fmt.Fprintf(&b, "\nComposite diff: %s\n\nRead the composite diff to review all changes since the last submitted specification. Read the full workspace spec for every file referenced in the diff, read all database schema specs listed above, and read workspace specs related to changed files or the change prompt, including parent command design docs and coding standards as applicable.\n", diffProjectPath)
+	responseSchema := filepath.ToSlash(filepath.Join(".4sight", "subcommands", "spec", "subcommands", "change", "subcommands", "review", "subcommands", "agent", "responseSchema.json"))
+	fmt.Fprintf(&b, "\nRead the response schema at %s and follow its constraints.\n", responseSchema)
 	b.WriteString("\nChanged spec files to review:\n")
 	for _, p := range paths {
 		fmt.Fprintf(&b, "- %s\n", p)
 	}
-	b.WriteString("\nSubmit a qualitative review by sending one JSON object to `4sight spec change review agent response` on stdin. Include an overall why, summary (max 65 characters), description, details, review, and ready boolean. Include one file_reviews entry for every changed spec path, each with path, why, summary (max 65 characters), description, details, and body_summary (max 65 characters). Reviews must cover the workspace change and any prompt-driven import. JSON shape:\n")
-	b.WriteString("```json\n{\"why\":\"...\",\"summary\":\"...\",\"description\":\"...\",\"details\":\"...\",\"review\":\"...\",\"ready\":true,\"file_reviews\":[{\"path\":\"subcommands/example/cmd.md\",\"why\":\"...\",\"summary\":\"...\",\"description\":\"...\",\"details\":\"...\",\"body_summary\":\"...\"}]}\n```\n")
+	b.WriteString("\nSubmit a qualitative review of the current workspace change compared with the last submitted specification by sending one JSON object to `4sight spec change review agent response` on stdin. Include an overall change review and one file_reviews entry for every file updated since submitted. Each file entry needs path, why, summary (max 65 characters), description, details, and body_summary (max 65 characters). Include overall why, summary (max 65 characters), description, details, review, and ready boolean. JSON shape:\n")
+	b.WriteString("```json\n{\"why\":\"...\",\"summary\":\"...\",\"description\":\"...\",\"details\":\"...\",\"review\":\"...\",\"ready\":true,\"file_reviews\":[{\"path\":\".4sight/subcommands/example/cmd.md\",\"why\":\"...\",\"summary\":\"...\",\"description\":\"...\",\"details\":\"...\",\"body_summary\":\"...\"}]}\n```\n")
 	if state.Prompt != "" {
 		b.WriteString("\n---\nUser request prompt (make any resulting changes to specs on disk, creating command directories or spec files as needed):\n")
 		b.WriteString(state.Prompt)
-		b.WriteString("\n\nIf you changed any specs because of this request, run `4sight spec change import` to record them before reviewing. If no spec changed, tell the user no review is needed because the prompt caused no spec changes, then stop.\n")
+		b.WriteString("\n\nIf you changed any specs because of this request, run `4sight spec change import` to record them, then rerun `4sight spec change review agent prompt` and follow the refreshed instructions before reviewing. If no spec changed, tell the user no review is needed for the prompt because it caused no spec changes, then stop.\n")
 	}
 	_, err = io.WriteString(out, b.String())
 	return err
@@ -303,6 +326,21 @@ func (s *doltStore) unreviewedPaths(submitted, workspace string) ([]string, erro
 		p = append(p, specRelPath(r[0], r[1]))
 	}
 	return p, nil
+}
+
+func (s *doltStore) removedSpecPaths() ([]string, error) {
+	rows, err := s.queryCSV("SELECT d.path,f.name FROM spec.files f JOIN spec.dirs d ON d.id=f.dir_id LEFT JOIN spec.bodies bs ON bs.file_id=f.id AND bs.state='submitted' LEFT JOIN spec.bodies bw ON bw.file_id=f.id AND bw.state='workspace' WHERE COALESCE(bs.body,'')<>'' AND COALESCE(bw.body,'')='' ORDER BY d.path,f.name")
+	if err != nil {
+		return nil, err
+	}
+	paths := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if len(row) < 2 {
+			continue
+		}
+		paths = append(paths, specRelPath(row[0], row[1]))
+	}
+	return paths, nil
 }
 
 func (s *doltStore) compositeDiff(submitted, workspace string) (string, error) {
