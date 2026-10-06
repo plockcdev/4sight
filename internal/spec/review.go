@@ -83,14 +83,31 @@ func runChangeReviewPrompt(root string, st *doltStore, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	specs := make([]string, 0, len(bodies))
+	var workspaceDBSpecs, workspaceCodeSpecs []string
 	for _, d := range bodies {
-		specs = append(specs, specRelPath(d.Dir, d.Name))
+		if normalizeSpecBody(d.Body) == "" {
+			continue
+		}
+		path := specRelPath(d.Dir, d.Name)
+		if d.Dir == "schemas" {
+			workspaceDBSpecs = append(workspaceDBSpecs, path)
+		} else {
+			workspaceCodeSpecs = append(workspaceCodeSpecs, path)
+		}
 	}
-	slices.Sort(specs)
+	slices.Sort(workspaceDBSpecs)
+	slices.Sort(workspaceCodeSpecs)
 	removed, err := st.removedSpecPaths()
 	if err != nil {
 		return err
+	}
+	var removedDBSpecs, removedCodeSpecs []string
+	for _, p := range removed {
+		if p.dir == "schemas" {
+			removedDBSpecs = append(removedDBSpecs, specRelPath(p.dir, p.name))
+		} else {
+			removedCodeSpecs = append(removedCodeSpecs, specRelPath(p.dir, p.name))
+		}
 	}
 	schemas, err := listSchemaSpecs(filepath.Join(root, "schemas"))
 	if err != nil {
@@ -100,15 +117,27 @@ func runChangeReviewPrompt(root string, st *doltStore, out io.Writer) error {
 	var b strings.Builder
 	b.WriteString("Review the current unsubmitted specification changes for quality and consistency.\n\n")
 	b.WriteString(meta)
-	b.WriteString("\nWorkspace Specs\n")
-	for _, p := range specs {
+	b.WriteString("\nCurrent Workspace DB Specs\n")
+	for _, p := range workspaceDBSpecs {
 		fmt.Fprintf(&b, "- %s\n", p)
 	}
-	b.WriteString("\nRemoved Specs\n")
-	if len(removed) == 0 {
+	b.WriteString("\nCurrent Workspace Specs\n")
+	for _, p := range workspaceCodeSpecs {
+		fmt.Fprintf(&b, "- %s\n", p)
+	}
+	b.WriteString("\nRemoved DB Specs\n")
+	if len(removedDBSpecs) == 0 {
 		b.WriteString("(none)\n")
 	} else {
-		for _, p := range removed {
+		for _, p := range removedDBSpecs {
+			fmt.Fprintf(&b, "- %s\n", p)
+		}
+	}
+	b.WriteString("\nRemoved Code Specs\n")
+	if len(removedCodeSpecs) == 0 {
+		b.WriteString("(none)\n")
+	} else {
+		for _, p := range removedCodeSpecs {
 			fmt.Fprintf(&b, "- %s\n", p)
 		}
 	}
@@ -335,17 +364,17 @@ func (s *doltStore) unreviewedPaths(submitted, workspace string) ([]string, erro
 	return p, nil
 }
 
-func (s *doltStore) removedSpecPaths() ([]string, error) {
-	rows, err := s.queryCSV("SELECT d.path,f.name FROM spec.files f JOIN spec.dirs d ON d.id=f.dir_id LEFT JOIN spec.bodies bs ON bs.file_id=f.id AND bs.state='submitted' LEFT JOIN spec.bodies bw ON bw.file_id=f.id AND bw.state='workspace' WHERE COALESCE(bs.body,'')<>'' AND COALESCE(bw.body,'')='' ORDER BY d.path,f.name")
+func (s *doltStore) removedSpecPaths() ([]specKey, error) {
+	rows, err := s.queryCSV("SELECT d.path,f.name,COALESCE(bs.body,''),COALESCE(bw.body,'') FROM spec.files f JOIN spec.dirs d ON d.id=f.dir_id LEFT JOIN spec.bodies bs ON bs.file_id=f.id AND bs.state='submitted' LEFT JOIN spec.bodies bw ON bw.file_id=f.id AND bw.state='workspace' ORDER BY d.path,f.name")
 	if err != nil {
 		return nil, err
 	}
-	paths := make([]string, 0, len(rows))
+	paths := make([]specKey, 0, len(rows))
 	for _, row := range rows {
-		if len(row) < 2 {
+		if len(row) < 4 || normalizeSpecBody(row[2]) == "" || normalizeSpecBody(row[3]) != "" {
 			continue
 		}
-		paths = append(paths, specRelPath(row[0], row[1]))
+		paths = append(paths, specKey{dir: row[0], name: row[1]})
 	}
 	return paths, nil
 }
@@ -381,22 +410,26 @@ func (s *doltStore) persistFileReview(state reviewState, f reviewFile) error {
 	if err != nil {
 		return err
 	}
-	rows, err := s.queryCSV("SELECT fc.id,b.body FROM spec.dirs d JOIN spec.files x ON x.dir_id=d.id JOIN spec.file_changes fc ON fc.file_id=x.id JOIN spec.changes_closure a ON a.child_id=fc.change_id AND a.parent_id=" + sqlString(state.Submitted) + " JOIN spec.changes_closure w ON w.child_id=" + sqlString(state.Workspace) + " AND w.parent_id=fc.change_id JOIN spec.bodies b ON b.file_id=x.id AND b.state='workspace' WHERE d.path=" + sqlString(dir) + " AND x.name=" + sqlString(name) + " AND a.depth>0 AND NOT EXISTS (SELECT 1 FROM spec.file_changes newer JOIN spec.changes_closure na ON na.child_id=newer.change_id AND na.parent_id=" + sqlString(state.Submitted) + " JOIN spec.changes_closure nw ON nw.child_id=" + sqlString(state.Workspace) + " AND nw.parent_id=newer.change_id WHERE newer.file_id=fc.file_id AND na.depth>0 AND nw.depth<w.depth) ORDER BY w.depth ASC LIMIT 1")
+	rows, err := s.queryCSV("SELECT fc.id,b.body,b.file_id FROM spec.dirs d JOIN spec.files x ON x.dir_id=d.id JOIN spec.file_changes fc ON fc.file_id=x.id JOIN spec.changes_closure a ON a.child_id=fc.change_id AND a.parent_id=" + sqlString(state.Submitted) + " JOIN spec.changes_closure w ON w.child_id=" + sqlString(state.Workspace) + " AND w.parent_id=fc.change_id JOIN spec.bodies b ON b.file_id=x.id AND b.state='workspace' WHERE d.path=" + sqlString(dir) + " AND x.name=" + sqlString(name) + " AND a.depth>0 AND NOT EXISTS (SELECT 1 FROM spec.file_changes newer JOIN spec.changes_closure na ON na.child_id=newer.change_id AND na.parent_id=" + sqlString(state.Submitted) + " JOIN spec.changes_closure nw ON nw.child_id=" + sqlString(state.Workspace) + " AND nw.parent_id=newer.change_id WHERE newer.file_id=fc.file_id AND na.depth>0 AND nw.depth<w.depth) ORDER BY w.depth ASC LIMIT 1")
 	if err != nil {
 		return err
 	}
 	if len(rows) == 0 {
 		return fmt.Errorf("file review path %q is not changed between submitted and workspace", f.Path)
 	}
-	if len(rows[0]) < 2 {
+	if len(rows[0]) < 3 {
 		return fmt.Errorf("could not resolve workspace body for %q", f.Path)
 	}
-	stmt := fmt.Sprintf("INSERT INTO spec.file_change_reviews(file_change_id,why,summary,description,details) VALUES(%s,%s,%s,%s,%s)", rows[0][0], sqlBodyLiteral(f.Why), sqlBodyLiteral(f.Summary), sqlBodyLiteral(f.Description), sqlBodyLiteral(f.Details))
+	stmt := fmt.Sprintf(
+		"START TRANSACTION;\n"+
+			"INSERT INTO spec.file_change_reviews(file_change_id,why,summary,description,details) VALUES(%s,%s,%s,%s,%s);\n"+
+			"UPDATE spec.bodies SET summary=%s WHERE file_id=%s AND state='workspace';\n"+
+			"COMMIT;",
+		rows[0][0], sqlBodyLiteral(f.Why), sqlBodyLiteral(f.Summary), sqlBodyLiteral(f.Description), sqlBodyLiteral(f.Details),
+		sqlBodyLiteral(f.BodySummary), rows[0][2],
+	)
 	if err := s.run("sql", "-q", stmt); err != nil {
-		return fmt.Errorf("save file review for %s: %w", f.Path, err)
-	}
-	if err := s.run("sql", "-q", fmt.Sprintf("UPDATE spec.bodies b JOIN spec.files x ON x.id=b.file_id JOIN spec.dirs d ON d.id=x.dir_id SET b.summary=%s WHERE b.state='workspace' AND d.path=%s AND x.name=%s", sqlBodyLiteral(f.BodySummary), sqlString(dir), sqlString(name))); err != nil {
-		return fmt.Errorf("save body summary for %s: %w", f.Path, err)
+		return fmt.Errorf("save file review and body summary for %s: %w", f.Path, err)
 	}
 	return nil
 }
