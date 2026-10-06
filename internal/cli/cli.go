@@ -20,6 +20,7 @@ type deps struct {
 	specSyncDiff             func(cwd string) error
 	specImplementPrompt      func(cwd string) error
 	specChangeImport         func(cwd string) error
+	specChangeRequest        func(cwd, prompt string) error
 	specChangeReviewPrompt   func(cwd string) error
 	specChangeReviewResponse func(cwd string) error
 }
@@ -36,6 +37,7 @@ func Run(args []string) int {
 		specSyncDiff:             spec.SyncDiff,
 		specImplementPrompt:      spec.ImplementPrompt,
 		specChangeImport:         spec.ChangeImport,
+		specChangeRequest:        spec.ChangeRequest,
 		specChangeReviewPrompt:   spec.ChangeReviewAgentPrompt,
 		specChangeReviewResponse: spec.ChangeReviewAgentResponse,
 	})
@@ -107,6 +109,9 @@ func runHelpTopic(topic []string) int {
 	case "spec change import":
 		printSpecChangeImportHelp()
 		return 0
+	case "spec change request":
+		printSpecChangeRequestHelp()
+		return 0
 	case "spec change review":
 		printSpecChangeReviewHelp()
 		return 0
@@ -123,7 +128,7 @@ func runHelpTopic(topic []string) int {
 		printMigrateImportHelp()
 		return 0
 	default:
-		fmt.Fprintf(os.Stderr, "4sight: unknown help topic %q (try: migrate, migrate up, migrate import, migrate implement prompt, spec, spec import, spec export, spec sync-check, spec sync-diff, spec implement prompt, spec change, spec change import)\n", strings.Join(topic, " "))
+		fmt.Fprintf(os.Stderr, "4sight: unknown help topic %q (try: migrate, migrate up, migrate import, migrate implement prompt, spec, spec import, spec export, spec sync-check, spec sync-diff, spec implement prompt, spec change, spec change import, spec change request)\n", strings.Join(topic, " "))
 		return 1
 	}
 }
@@ -293,6 +298,8 @@ func parseSpecChange(args []string, d deps) int {
 		return 0
 	case "import":
 		return parseSpecChangeImport(args[1:], d)
+	case "request":
+		return parseSpecChangeRequest(args[1:], d)
 	case "review":
 		return parseSpecChangeReview(args[1:], d)
 	}
@@ -302,6 +309,27 @@ func parseSpecChange(args []string, d deps) int {
 	}
 	fmt.Fprintf(os.Stderr, "4sight spec change: unknown command %q\n", args[0])
 	return 1
+}
+
+func parseSpecChangeRequest(args []string, d deps) int {
+	if len(args) == 1 && (args[0] == "-h" || args[0] == "--help") {
+		printSpecChangeRequestHelp()
+		return 0
+	}
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "4sight spec change request: requires a prompt")
+		return 1
+	}
+	cwd, err := d.getwd()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "4sight spec change request:", err)
+		return 1
+	}
+	if err := d.specChangeRequest(cwd, strings.Join(args, " ")); err != nil {
+		fmt.Fprintln(os.Stderr, "4sight spec change request:", err)
+		return 1
+	}
+	return 0
 }
 
 func parseSpecChangeReview(args []string, d deps) int {
@@ -638,7 +666,7 @@ Import, export, and check specification bodies in the spec database.
 
 Commands:
   import            Import a spec file into bodies
-  change            Record filesystem spec changes as a change
+  change            Record filesystem changes and prompts as a change
   export            Write a spec body from the database to disk
   sync-check        Compare database bodies with on-disk spec files
   sync-diff         Show unified diffs for spec differences
@@ -685,7 +713,21 @@ Record specification filesystem changes in the spec database.
 
 Commands:
   import            Persist filesystem spec deltas as a workspace change
+  request           Save a prompt as a new workspace change
   review            Review changes to the specification
+
+Options:
+  -h, --help        Show this help
+`)
+}
+
+func printSpecChangeRequestHelp() {
+	fmt.Print(`4sight spec change request <prompt>
+
+Save a prompt in a new change, make it a child of the current workspace
+change, and update the workspace pointer.
+
+Prints YAML with the new change id.
 
 Options:
   -h, --help        Show this help

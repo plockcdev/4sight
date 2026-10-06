@@ -48,15 +48,17 @@ Call this the composite diff.
 
 ## Calculate diffs
 
-Show agent all workspace file db spec paths relative to .4sight/ in a "Workspace
-Specs" section (these should all be in schemas subdir)
+Show agent all workspace file db spec paths relative to .4sight/ in a "Current
+Workspace DB Specs" section (these should all be in schemas subdir). Do not list
+empty files.
 
-Show agent all workspace file spec paths relative to .4sight/ in a "Workspace
-Specs" section, except for the db spec files already printed
+Show agent all workspace file spec paths relative to .4sight/ in a "Current
+Workspace Specs" section, except for the db spec files already printed. Do not
+list empty files.
 
-The render a list of all files that were still non-empty in the current
-submitted change pointer (scan up the changes), these are the specs removed for
-the change.
+List specs whose latest body at the submitted pointer is non-empty and whose
+latest body at the workspace pointer is empty or absent. These are the specs
+removed in this change. Separate DB specs and code specs as different lists.
 
 Output prompt instructs agent to read the composite diff file to see all the
 changes since the last submitted specification (user does not know what a

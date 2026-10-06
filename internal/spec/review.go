@@ -13,7 +13,14 @@ import (
 )
 
 type reviewState struct{ Workspace, Submitted, Prompt string }
-type reviewFile struct{ Path, Why, Summary, Description, Details, BodySummary string }
+type reviewFile struct {
+	Path        string `json:"path"`
+	Why         string `json:"why"`
+	Summary     string `json:"summary"`
+	Description string `json:"description"`
+	Details     string `json:"details"`
+	BodySummary string `json:"body_summary"`
+}
 type reviewResponse struct {
 	Why         string       `json:"why"`
 	Summary     string       `json:"summary"`

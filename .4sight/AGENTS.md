@@ -69,13 +69,13 @@ run `4sight spec implement prompt` and then follow the prompt
 
 Do not update any code or schema specs during implementation
 
-# Handling spec review request
+# Handling User request for spec review
 
-When the user requests a change to the spec, run `4sight spec change request
-<prompt>` where prompt is their request and follow the instructions
+When the user requests a spec review, run `4sight spec change review agent
+prompt` and follow the instructions
 
 # Handling spec change requests
 
 When the user requests a change to the spec and provides instructions on those
-changes, run `4sight spec change request <prompt>` where prompt is their request
-and follow the instructions
+changes, run `4sight spec change review agent prompt <prompt>` where prompt is
+their request and follow the instructions
