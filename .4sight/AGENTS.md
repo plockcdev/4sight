@@ -69,6 +69,11 @@ run `4sight spec implement prompt` and then follow the prompt
 
 Do not update any code or schema specs during implementation
 
+Before implementing code that depends on a schema change, check that
+database’s current and submitted migration symlinks. If they point to
+different migrations, stop and ask the user to run 4sight migrate up. Do not
+update code to work with the pending schema until current matches submitted.
+
 # Handling User request for spec review
 
 When the user requests a spec review, run `4sight spec change review agent
