@@ -286,15 +286,15 @@ func runChangeReviewResponse(root string, st *doltStore, r reviewResponse) error
 			return err
 		}
 	}
-	score := 0
+	ready := 0
 	if r.Ready {
-		score = 100
+		ready = 1
 	}
 	changeName, err := st.nextReviewName()
 	if err != nil {
 		return err
 	}
-	if err := st.run("sql", "-q", fmt.Sprintf("INSERT INTO spec.change_review (name,change_id,why,summary,description,details,score,review) VALUES (%s,%s,%s,%s,%s,%s,%d,%s)", sqlString(changeName), sqlString(state.Workspace), sqlBodyLiteral(r.Why), sqlBodyLiteral(r.Summary), sqlBodyLiteral(r.Description), sqlBodyLiteral(r.Details), score, sqlBodyLiteral(r.Review))); err != nil {
+	if err := st.run("sql", "-q", fmt.Sprintf("INSERT INTO spec.change_review (name,change_id,why,summary,description,details,ready,review) VALUES (%s,%s,%s,%s,%s,%s,%d,%s)", sqlString(changeName), sqlString(state.Workspace), sqlBodyLiteral(r.Why), sqlBodyLiteral(r.Summary), sqlBodyLiteral(r.Description), sqlBodyLiteral(r.Details), ready, sqlBodyLiteral(r.Review))); err != nil {
 		return fmt.Errorf("save change review: %w", err)
 	}
 	return nil

@@ -113,14 +113,22 @@ If no previous file change found, baseline is empty string.
 
 ## file_change_reviews
 
-- file change: reference to which file change this review is for
+- file: reference to which file change this review is for
+- change review: reference to the overall change review that contains this
+file review; every file review belongs to exactly one overall review
 - details - full narrative detail if needed to expand on the description
 - description: narrative paragraph if needed to extend the summary
 - why: justification of the file change
 - summary: 65 character or less summary of the file change with respect to
 the current submitted change pointer, semantically
+- body summary: a non-empty snapshot of the associated body summary at review
+time, 65 characters or less
 
 there is at most one file_change_review per file_change
+
+The referenced change review and file change must belong to the same change
+sequence, and the file change must be one of the files covered by that change
+review.
 
 all fields must be set, but details can be empty, and description can be empty
 if details is empty, the rest must be non-empty. Constraints not easily defined
