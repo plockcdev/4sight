@@ -39,6 +39,118 @@ func ChangeReviewAgentPrompt(cwd string) error {
 	return runChangeReviewPrompt(root, newDoltStore(filepath.Join(root, "db")), os.Stdout)
 }
 
+func ChangeReviewShow(cwd, changeID string) error {
+	root, err := findMetadataRoot(cwd)
+	if err != nil {
+		return err
+	}
+	return runChangeReviewShow(newDoltStore(filepath.Join(root, "db")), changeID, os.Stdout)
+}
+
+type changeReviewFileReport struct {
+	Path, Why, Summary, Description, Details, BodySummary string
+}
+
+func runChangeReviewShow(st *doltStore, changeID string, out io.Writer) error {
+	if changeID == "" {
+		state, err := st.reviewState()
+		if err != nil {
+			return err
+		}
+		changeID = state.Workspace
+	}
+	exists, err := st.queryCSV("SELECT id FROM spec.changes WHERE id=" + sqlString(changeID))
+	if err != nil {
+		return fmt.Errorf("look up change %s: %w", changeID, err)
+	}
+	if len(exists) == 0 {
+		return fmt.Errorf("change %s does not exist", changeID)
+	}
+	reviews, err := st.queryCSV("SELECT why,summary,description,details,review,ready FROM spec.change_review WHERE change_id=" + sqlString(changeID))
+	if err != nil {
+		return fmt.Errorf("look up review for change %s: %w", changeID, err)
+	}
+	if len(reviews) == 0 {
+		return fmt.Errorf("no review is available for change %s", changeID)
+	}
+	if len(reviews[0]) < 6 {
+		return fmt.Errorf("incomplete review data for change %s", changeID)
+	}
+	rows, err := st.queryCSV("SELECT d.path,f.name,r.why,r.summary,r.description,r.details,r.body_summary FROM spec.file_change_reviews r JOIN spec.change_review cr ON cr.id=r.change_review_id JOIN spec.file_changes fc ON fc.id=r.file_change_id JOIN spec.files f ON f.id=fc.file_id JOIN spec.dirs d ON d.id=f.dir_id WHERE cr.change_id=" + sqlString(changeID))
+	if err != nil {
+		return fmt.Errorf("look up file reviews for change %s: %w", changeID, err)
+	}
+	files := make([]changeReviewFileReport, 0, len(rows))
+	for _, row := range rows {
+		if len(row) < 7 {
+			return fmt.Errorf("incomplete file review data for change %s", changeID)
+		}
+		path := row[0]
+		if path != "" {
+			path += "/"
+		}
+		path = ".4sight/" + path + row[1]
+		files = append(files, changeReviewFileReport{
+			Path: path, Why: row[2], Summary: row[3], Description: row[4], Details: row[5], BodySummary: row[6],
+		})
+	}
+	slices.SortFunc(files, func(a, b changeReviewFileReport) int { return strings.Compare(a.Path, b.Path) })
+	ready := reviews[0][5] == "1" || strings.EqualFold(reviews[0][5], "true")
+	if _, err := fmt.Fprintf(out, "Change ID: %s\n\nOverall review:\n", changeID); err != nil {
+		return err
+	}
+	overallFields := [][2]string{
+		{"Why", reviews[0][0]}, {"Summary", reviews[0][1]}, {"Description", reviews[0][2]},
+		{"Details", reviews[0][3]}, {"Review", reviews[0][4]}, {"Ready", fmt.Sprint(ready)},
+	}
+	for _, field := range overallFields {
+		if err := writeReviewField(out, "  ", field[0], field[1]); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprintln(out, "\nFile reviews:"); err != nil {
+		return err
+	}
+	if len(files) == 0 {
+		_, err := fmt.Fprintln(out, "  (none)")
+		return err
+	}
+	for i, file := range files {
+		if i > 0 {
+			if _, err := fmt.Fprintln(out); err != nil {
+				return err
+			}
+		}
+		fields := [][2]string{
+			{"Path", file.Path}, {"Why", file.Why}, {"Summary", file.Summary},
+			{"Description", file.Description}, {"Details", file.Details}, {"Body summary", file.BodySummary},
+		}
+		for _, field := range fields {
+			if err := writeReviewField(out, "  ", field[0], field[1]); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func writeReviewField(out io.Writer, indent, label, value string) error {
+	lines := strings.Split(value, "\n")
+	if value == "" {
+		_, err := fmt.Fprintf(out, "%s%s: \n", indent, label)
+		return err
+	}
+	if _, err := fmt.Fprintf(out, "%s%s: %s\n", indent, label, lines[0]); err != nil {
+		return err
+	}
+	for _, line := range lines[1:] {
+		if _, err := fmt.Fprintf(out, "%s  %s\n", indent, line); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func runChangeReviewPrompt(root string, st *doltStore, out io.Writer) error {
 	state, err := st.reviewState()
 	if err != nil {
@@ -190,7 +302,16 @@ func ChangeReviewAgentResponse(cwd string) error {
 	if err := dec.Decode(&extra); err != io.EOF {
 		return fmt.Errorf("review input must contain exactly one JSON object")
 	}
-	return runChangeReviewResponse(root, newDoltStore(filepath.Join(root, "db")), response)
+	st := newDoltStore(filepath.Join(root, "db"))
+	state, err := st.reviewState()
+	if err != nil {
+		return err
+	}
+	if err := runChangeReviewResponse(root, st, response); err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(os.Stdout, "Saved review for change %s.\n", state.Workspace)
+	return err
 }
 
 func readReviewStdin(r io.Reader, timeout time.Duration) ([]byte, error) {
@@ -281,10 +402,13 @@ func runChangeReviewResponse(root string, st *doltStore, r reviewResponse) error
 		slices.Sort(missing)
 		return fmt.Errorf("missing file reviews for: %s", strings.Join(missing, ", "))
 	}
+	resolved := make([]resolvedReviewFile, 0, len(r.Files))
 	for _, f := range r.Files {
-		if err := st.persistFileReview(state, f); err != nil {
+		file, err := st.resolveReviewFile(state, f)
+		if err != nil {
 			return err
 		}
+		resolved = append(resolved, file)
 	}
 	ready := 0
 	if r.Ready {
@@ -294,7 +418,15 @@ func runChangeReviewResponse(root string, st *doltStore, r reviewResponse) error
 	if err != nil {
 		return err
 	}
-	if err := st.run("sql", "-q", fmt.Sprintf("INSERT INTO spec.change_review (name,change_id,why,summary,description,details,ready,review) VALUES (%s,%s,%s,%s,%s,%s,%d,%s)", sqlString(changeName), sqlString(state.Workspace), sqlBodyLiteral(r.Why), sqlBodyLiteral(r.Summary), sqlBodyLiteral(r.Description), sqlBodyLiteral(r.Details), ready, sqlBodyLiteral(r.Review))); err != nil {
+	var tx strings.Builder
+	tx.WriteString("START TRANSACTION;\n")
+	fmt.Fprintf(&tx, "INSERT INTO spec.change_review (name,change_id,why,summary,description,details,ready,review) VALUES (%s,%s,%s,%s,%s,%s,%d,%s);\n", sqlString(changeName), sqlString(state.Workspace), sqlBodyLiteral(r.Why), sqlBodyLiteral(r.Summary), sqlBodyLiteral(r.Description), sqlBodyLiteral(r.Details), ready, sqlBodyLiteral(r.Review))
+	for _, file := range resolved {
+		fmt.Fprintf(&tx, "INSERT INTO spec.file_change_reviews (file_change_id,change_review_id,why,summary,body_summary,description,details) VALUES (%s,(SELECT id FROM spec.change_review WHERE change_id=%s),%s,%s,%s,%s,%s);\n", file.FileChangeID, sqlString(state.Workspace), sqlBodyLiteral(file.Review.Why), sqlBodyLiteral(file.Review.Summary), sqlBodyLiteral(file.Review.BodySummary), sqlBodyLiteral(file.Review.Description), sqlBodyLiteral(file.Review.Details))
+		fmt.Fprintf(&tx, "UPDATE spec.bodies SET summary=%s WHERE file_id=%s AND state='workspace';\n", sqlBodyLiteral(file.Review.BodySummary), file.FileID)
+	}
+	tx.WriteString("COMMIT;")
+	if err := st.run("sql", "-q", tx.String()); err != nil {
 		return fmt.Errorf("save change review: %w", err)
 	}
 	return nil
@@ -405,33 +537,28 @@ func (s *doltStore) compositeDiff(submitted, workspace string) (string, error) {
 	return out.String(), nil
 }
 
-func (s *doltStore) persistFileReview(state reviewState, f reviewFile) error {
+type resolvedReviewFile struct {
+	Review       reviewFile
+	FileChangeID string
+	FileID       string
+}
+
+func (s *doltStore) resolveReviewFile(state reviewState, f reviewFile) (resolvedReviewFile, error) {
 	dir, name, err := resolveReviewPath(f.Path)
 	if err != nil {
-		return err
+		return resolvedReviewFile{}, err
 	}
-	rows, err := s.queryCSV("SELECT fc.id,b.body,b.file_id FROM spec.dirs d JOIN spec.files x ON x.dir_id=d.id JOIN spec.file_changes fc ON fc.file_id=x.id JOIN spec.changes_closure a ON a.child_id=fc.change_id AND a.parent_id=" + sqlString(state.Submitted) + " JOIN spec.changes_closure w ON w.child_id=" + sqlString(state.Workspace) + " AND w.parent_id=fc.change_id JOIN spec.bodies b ON b.file_id=x.id AND b.state='workspace' WHERE d.path=" + sqlString(dir) + " AND x.name=" + sqlString(name) + " AND a.depth>0 AND NOT EXISTS (SELECT 1 FROM spec.file_changes newer JOIN spec.changes_closure na ON na.child_id=newer.change_id AND na.parent_id=" + sqlString(state.Submitted) + " JOIN spec.changes_closure nw ON nw.child_id=" + sqlString(state.Workspace) + " AND nw.parent_id=newer.change_id WHERE newer.file_id=fc.file_id AND na.depth>0 AND nw.depth<w.depth) ORDER BY w.depth ASC LIMIT 1")
+	rows, err := s.queryCSV("SELECT fc.id,b.file_id FROM spec.dirs d JOIN spec.files x ON x.dir_id=d.id JOIN spec.file_changes fc ON fc.file_id=x.id JOIN spec.changes_closure a ON a.child_id=fc.change_id AND a.parent_id=" + sqlString(state.Submitted) + " JOIN spec.changes_closure w ON w.child_id=" + sqlString(state.Workspace) + " AND w.parent_id=fc.change_id JOIN spec.bodies b ON b.file_id=x.id AND b.state='workspace' WHERE d.path=" + sqlString(dir) + " AND x.name=" + sqlString(name) + " AND a.depth>0 AND NOT EXISTS (SELECT 1 FROM spec.file_changes newer JOIN spec.changes_closure na ON na.child_id=newer.change_id AND na.parent_id=" + sqlString(state.Submitted) + " JOIN spec.changes_closure nw ON nw.child_id=" + sqlString(state.Workspace) + " AND nw.parent_id=newer.change_id WHERE newer.file_id=fc.file_id AND na.depth>0 AND nw.depth<w.depth) ORDER BY w.depth ASC LIMIT 1")
 	if err != nil {
-		return err
+		return resolvedReviewFile{}, err
 	}
 	if len(rows) == 0 {
-		return fmt.Errorf("file review path %q is not changed between submitted and workspace", f.Path)
+		return resolvedReviewFile{}, fmt.Errorf("file review path %q is not changed between submitted and workspace", f.Path)
 	}
-	if len(rows[0]) < 3 {
-		return fmt.Errorf("could not resolve workspace body for %q", f.Path)
+	if len(rows[0]) < 2 {
+		return resolvedReviewFile{}, fmt.Errorf("could not resolve workspace body for %q", f.Path)
 	}
-	stmt := fmt.Sprintf(
-		"START TRANSACTION;\n"+
-			"INSERT INTO spec.file_change_reviews(file_change_id,why,summary,description,details) VALUES(%s,%s,%s,%s,%s);\n"+
-			"UPDATE spec.bodies SET summary=%s WHERE file_id=%s AND state='workspace';\n"+
-			"COMMIT;",
-		rows[0][0], sqlBodyLiteral(f.Why), sqlBodyLiteral(f.Summary), sqlBodyLiteral(f.Description), sqlBodyLiteral(f.Details),
-		sqlBodyLiteral(f.BodySummary), rows[0][2],
-	)
-	if err := s.run("sql", "-q", stmt); err != nil {
-		return fmt.Errorf("save file review and body summary for %s: %w", f.Path, err)
-	}
-	return nil
+	return resolvedReviewFile{Review: f, FileChangeID: rows[0][0], FileID: rows[0][1]}, nil
 }
 
 func resolveReviewPath(p string) (string, string, error) {

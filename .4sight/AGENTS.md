@@ -67,7 +67,7 @@ specs or code specs as part of implementation
 If user asks you to implement code spec (or doesn't specify which kind of spec),
 run `4sight spec implement prompt` and then follow the prompt
 
-Do not update any code or schema specs during implementation
+Do not update or import any code or schema specs during implementation
 
 Before implementing code that depends on a schema change, check that
 database’s current and submitted migration symlinks. If they point to
