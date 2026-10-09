@@ -32,3 +32,6 @@ Then tell agent to review the application code spec and update code to match the
 spec, but do not update the schema. If the schema needs a spec change or a
 migration to be compatible with the code spec, stop and tell the user the gap
 (schema spec or migration, and what kinds of changes are needed)
+
+After successfully implementing the submitted change, instruct the agent to run
+`4sight spec change implement agent done` to mark the implementation complete.

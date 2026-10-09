@@ -47,7 +47,7 @@ func runChangeSubmit(root string, st changeSubmitStore, stdout io.Writer) error 
 	for key := range keys {
 		local, onDisk := disk[key]
 		cached, inDB := db[key]
-		if onDisk == inDB && normalizeSpecBody(local) == normalizeSpecBody(cached) {
+		if normalizeSpecBody(local) == normalizeSpecBody(cached) {
 			continue
 		}
 		path := specRelPath(key.dir, key.name)
