@@ -169,12 +169,16 @@ func runChangeReviewPrompt(root string, st *doltStore, out io.Writer) error {
 		_, err = fmt.Fprintf(out, "%sWorkspace specs are out of sync:\n%s\nImport spec changes or overwrite the affected local files from the database, then retry.\n", meta, strings.Join(bad, "\n"))
 		return err
 	}
-	paths, err := st.unreviewedPaths(state.Submitted, state.Workspace)
+	unreviewedPaths, err := st.unreviewedPaths(state.Submitted, state.Workspace)
 	if err != nil {
 		return err
 	}
-	if state.Prompt == "" && len(paths) == 0 {
+	if state.Prompt == "" && len(unreviewedPaths) == 0 {
 		_, err = fmt.Fprintln(out, meta+"There is nothing to review.")
+		return err
+	}
+	paths, err := st.changedPaths(state.Submitted, state.Workspace)
+	if err != nil {
 		return err
 	}
 	for i := range paths {
@@ -292,6 +296,9 @@ func ChangeReviewAgentResponse(cwd string) error {
 	if err != nil {
 		return err
 	}
+	if err := validateReviewJSONShape(data); err != nil {
+		return fmt.Errorf("invalid review JSON: %w", err)
+	}
 	var response reviewResponse
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
@@ -337,6 +344,57 @@ func readReviewStdin(r io.Reader, timeout time.Duration) ([]byte, error) {
 	}
 }
 
+func validateReviewJSONShape(data []byte) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	if fields == nil {
+		return fmt.Errorf("review must be a JSON object")
+	}
+	for _, name := range []string{"why", "summary", "description", "details", "review", "ready", "file_reviews"} {
+		if _, ok := fields[name]; !ok {
+			return fmt.Errorf("missing required field %q", name)
+		}
+	}
+	for _, name := range []string{"why", "summary", "description", "details", "review"} {
+		if !hasJSONType(fields[name], '"') {
+			return fmt.Errorf("field %q must be a string", name)
+		}
+	}
+	ready := bytes.TrimSpace(fields["ready"])
+	if string(ready) != "true" && string(ready) != "false" {
+		return fmt.Errorf("field %q must be a boolean", "ready")
+	}
+	if !hasJSONType(fields["file_reviews"], '[') {
+		return fmt.Errorf("field %q must be an array", "file_reviews")
+	}
+	var fileReviews []map[string]json.RawMessage
+	if err := json.Unmarshal(fields["file_reviews"], &fileReviews); err != nil {
+		return fmt.Errorf("field %q must be an array of objects: %w", "file_reviews", err)
+	}
+	for i, fileReview := range fileReviews {
+		if fileReview == nil {
+			return fmt.Errorf("file_reviews[%d] must be an object", i)
+		}
+		for _, name := range []string{"path", "why", "summary", "description", "details", "body_summary"} {
+			value, ok := fileReview[name]
+			if !ok {
+				return fmt.Errorf("file_reviews[%d] is missing required field %q", i, name)
+			}
+			if !hasJSONType(value, '"') {
+				return fmt.Errorf("file_reviews[%d].%s must be a string", i, name)
+			}
+		}
+	}
+	return nil
+}
+
+func hasJSONType(value json.RawMessage, firstByte byte) bool {
+	value = bytes.TrimSpace(value)
+	return len(value) > 0 && value[0] == firstByte
+}
+
 func validateReview(r reviewResponse) error {
 	if strings.TrimSpace(r.Why) == "" || strings.TrimSpace(r.Summary) == "" || len([]rune(r.Summary)) > 65 || strings.TrimSpace(r.Review) == "" {
 		return fmt.Errorf("overall why, review, and summary (1-65 characters) are required")
@@ -379,7 +437,7 @@ func runChangeReviewResponse(root string, st *doltStore, r reviewResponse) error
 	if len(bad) > 0 {
 		return fmt.Errorf("filesystem and workspace bodies are out of sync; run `4sight spec change import` before reviewing: %s", strings.Join(bad, "; "))
 	}
-	expected, err := st.unreviewedPaths(state.Submitted, state.Workspace)
+	expected, err := st.changedPaths(state.Submitted, state.Workspace)
 	if err != nil {
 		return err
 	}
@@ -390,7 +448,7 @@ func runChangeReviewResponse(root string, st *doltStore, r reviewResponse) error
 	for _, f := range r.Files {
 		p := strings.TrimPrefix(f.Path, ".4sight/")
 		if !wantPaths[p] {
-			return fmt.Errorf("file review path %q is not an unreviewed change between submitted and workspace", f.Path)
+			return fmt.Errorf("file review path %q is not a changed file between submitted and workspace", f.Path)
 		}
 		delete(wantPaths, p)
 	}
@@ -422,7 +480,11 @@ func runChangeReviewResponse(root string, st *doltStore, r reviewResponse) error
 	tx.WriteString("START TRANSACTION;\n")
 	fmt.Fprintf(&tx, "INSERT INTO spec.change_review (name,change_id,why,summary,description,details,ready,review) VALUES (%s,%s,%s,%s,%s,%s,%d,%s);\n", sqlString(changeName), sqlString(state.Workspace), sqlBodyLiteral(r.Why), sqlBodyLiteral(r.Summary), sqlBodyLiteral(r.Description), sqlBodyLiteral(r.Details), ready, sqlBodyLiteral(r.Review))
 	for _, file := range resolved {
-		fmt.Fprintf(&tx, "INSERT INTO spec.file_change_reviews (file_change_id,change_review_id,why,summary,body_summary,description,details) VALUES (%s,(SELECT id FROM spec.change_review WHERE change_id=%s),%s,%s,%s,%s,%s);\n", file.FileChangeID, sqlString(state.Workspace), sqlBodyLiteral(file.Review.Why), sqlBodyLiteral(file.Review.Summary), sqlBodyLiteral(file.Review.BodySummary), sqlBodyLiteral(file.Review.Description), sqlBodyLiteral(file.Review.Details))
+		if file.ExistingReviewID != "" {
+			fmt.Fprintf(&tx, "UPDATE spec.file_change_reviews SET file_change_id=%s,change_review_id=(SELECT id FROM spec.change_review WHERE change_id=%s),why=%s,summary=%s,body_summary=%s,description=%s,details=%s WHERE id=%s;\n", file.FileChangeID, sqlString(state.Workspace), sqlBodyLiteral(file.Review.Why), sqlBodyLiteral(file.Review.Summary), sqlBodyLiteral(file.Review.BodySummary), sqlBodyLiteral(file.Review.Description), sqlBodyLiteral(file.Review.Details), file.ExistingReviewID)
+		} else {
+			fmt.Fprintf(&tx, "INSERT INTO spec.file_change_reviews (file_change_id,change_review_id,why,summary,body_summary,description,details) VALUES (%s,(SELECT id FROM spec.change_review WHERE change_id=%s),%s,%s,%s,%s,%s);\n", file.FileChangeID, sqlString(state.Workspace), sqlBodyLiteral(file.Review.Why), sqlBodyLiteral(file.Review.Summary), sqlBodyLiteral(file.Review.BodySummary), sqlBodyLiteral(file.Review.Description), sqlBodyLiteral(file.Review.Details))
+		}
 		fmt.Fprintf(&tx, "UPDATE spec.bodies SET summary=%s WHERE file_id=%s AND state='workspace';\n", sqlBodyLiteral(file.Review.BodySummary), file.FileID)
 	}
 	tx.WriteString("COMMIT;")
@@ -496,6 +558,20 @@ func (s *doltStore) unreviewedPaths(submitted, workspace string) ([]string, erro
 	return p, nil
 }
 
+func (s *doltStore) changedPaths(submitted, workspace string) ([]string, error) {
+	rows, err := s.queryCSV("SELECT d.path,f.name FROM spec.file_changes fc JOIN spec.files f ON f.id=fc.file_id JOIN spec.dirs d ON d.id=f.dir_id JOIN spec.changes_closure a ON a.child_id=fc.change_id AND a.parent_id=" + sqlString(submitted) + " JOIN spec.changes_closure w ON w.child_id=" + sqlString(workspace) + " AND w.parent_id=fc.change_id WHERE a.depth>0 AND NOT EXISTS (SELECT 1 FROM spec.file_changes newer JOIN spec.changes_closure na ON na.child_id=newer.change_id AND na.parent_id=" + sqlString(submitted) + " JOIN spec.changes_closure nw ON nw.child_id=" + sqlString(workspace) + " AND nw.parent_id=newer.change_id WHERE newer.file_id=fc.file_id AND na.depth>0 AND nw.depth<w.depth) GROUP BY d.path,f.name ORDER BY d.path,f.name")
+	if err != nil {
+		return nil, err
+	}
+	var paths []string
+	for _, row := range rows {
+		if len(row) >= 2 {
+			paths = append(paths, specRelPath(row[0], row[1]))
+		}
+	}
+	return paths, nil
+}
+
 func (s *doltStore) removedSpecPaths() ([]specKey, error) {
 	rows, err := s.queryCSV("SELECT d.path,f.name,COALESCE(bs.body,''),COALESCE(bw.body,'') FROM spec.files f JOIN spec.dirs d ON d.id=f.dir_id LEFT JOIN spec.bodies bs ON bs.file_id=f.id AND bs.state='submitted' LEFT JOIN spec.bodies bw ON bw.file_id=f.id AND bw.state='workspace' ORDER BY d.path,f.name")
 	if err != nil {
@@ -538,9 +614,10 @@ func (s *doltStore) compositeDiff(submitted, workspace string) (string, error) {
 }
 
 type resolvedReviewFile struct {
-	Review       reviewFile
-	FileChangeID string
-	FileID       string
+	Review           reviewFile
+	FileChangeID     string
+	FileID           string
+	ExistingReviewID string
 }
 
 func (s *doltStore) resolveReviewFile(state reviewState, f reviewFile) (resolvedReviewFile, error) {
@@ -558,7 +635,15 @@ func (s *doltStore) resolveReviewFile(state reviewState, f reviewFile) (resolved
 	if len(rows[0]) < 2 {
 		return resolvedReviewFile{}, fmt.Errorf("could not resolve workspace body for %q", f.Path)
 	}
-	return resolvedReviewFile{Review: f, FileChangeID: rows[0][0], FileID: rows[0][1]}, nil
+	priorReviews, err := s.queryCSV("SELECT r.id FROM spec.file_change_reviews r JOIN spec.file_changes reviewed_fc ON reviewed_fc.id=r.file_change_id JOIN spec.changes_closure a ON a.child_id=reviewed_fc.change_id AND a.parent_id=" + sqlString(state.Submitted) + " JOIN spec.changes_closure w ON w.child_id=" + sqlString(state.Workspace) + " AND w.parent_id=reviewed_fc.change_id WHERE reviewed_fc.file_id=" + rows[0][1] + " AND a.depth>0 ORDER BY w.depth ASC LIMIT 1")
+	if err != nil {
+		return resolvedReviewFile{}, err
+	}
+	var existingReviewID string
+	if len(priorReviews) > 0 && len(priorReviews[0]) > 0 {
+		existingReviewID = priorReviews[0][0]
+	}
+	return resolvedReviewFile{Review: f, FileChangeID: rows[0][0], FileID: rows[0][1], ExistingReviewID: existingReviewID}, nil
 }
 
 func resolveReviewPath(p string) (string, string, error) {
