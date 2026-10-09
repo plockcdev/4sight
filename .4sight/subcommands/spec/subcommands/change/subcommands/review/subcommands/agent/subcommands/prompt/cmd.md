@@ -102,3 +102,9 @@ imposed constraints.
 
 Instruct agent to also include overall change review and a review for each file
 updated since the "submitted" change pointer.
+
+Require the agent to run `4sight spec change review agent response` with the
+complete review in the required input format and not finish until the command
+succeeds. After it succeeds, the agent must include the overall review and
+per-file findings in its user-facing reply; command success alone is not the
+user-facing review.

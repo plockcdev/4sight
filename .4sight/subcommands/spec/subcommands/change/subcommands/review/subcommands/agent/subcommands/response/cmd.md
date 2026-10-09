@@ -5,11 +5,25 @@ prompt command.
 
 Follows the Agent Prompt and Response Design
 
-Create a change review for the current workspace change pointer, create one or
-more complete file change reviews, and save each associated body summary as a
-snapshot.
+Check for response errors, if there is one, stop, tell user how to remediate.
 
-Db links should be written by this command the agent shouldn't have to see
+- must be at least one file change review incoming
+- must be only one review per file incoming
+- each file submitted must exist in filesystem and match the persisted body text
+
+Populate a new change review for the current workspace change pointer.
+
+For each file change corrsponding to each review incoming, it may or may not
+have a review already.
+
+- with no review - create file change review
+- with a review - update the review fields from incoming to replace the old review and update file change to the workspace change pointer's file change or latest for its ancestry
+
+For each file change review in response, update related file's body's body
+summary for the workspace state, replacing the stale summary with one that has
+context of any other spec files changing.
+
+Db links should be written by this command, the agent shouldn't have to see
 internal ids as paths should be sufficient to identify db objects as we know the
 workspace change pointer.
 

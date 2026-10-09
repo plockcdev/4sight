@@ -19,10 +19,9 @@ comparing.
 
 When comparing empty db body, the on disk equivalent is a missing file.
 
-## Finding file change or body for a current change pointer
+## Resolving bodies and file changes for a change pointer
 
-Since bodies point to file changes and file changes point to changes but don't
-get instantiated for every change when the specs are not changed, the body /
-file change can be older than the relevant current change pointer. Any time we
-are considering bodies / file_changes relative to a current change pointer,
-include the ancestry but only use the very latest body/file_change.
+Whenever resolving a body or file change for a target change pointer, search the
+pointer's change ancestry. For each file with a file change on that ancestry,
+use only its latest file change on the ancestry and the body associated with
+that change.
