@@ -10,38 +10,42 @@ import (
 )
 
 type deps struct {
-	getwd                    func() (string, error)
-	up                       func(cwd string) error
-	implementPrompt          func(cwd, schemaRel string) error
-	migrateImport            func(cwd, schemaRel string) error
-	specImport               func(cwd string, loc []string) error
-	specExport               func(cwd string, loc []string) error
-	specSyncCheck            func(cwd string) error
-	specSyncDiff             func(cwd string) error
-	specImplementPrompt      func(cwd string) error
-	specChangeImport         func(cwd string) error
-	specChangeRequest        func(cwd, prompt string) error
-	specChangeReviewPrompt   func(cwd string) error
-	specChangeReviewResponse func(cwd string) error
-	specChangeReviewShow     func(cwd, changeID string) error
+	getwd                        func() (string, error)
+	up                           func(cwd string) error
+	implementPrompt              func(cwd, schemaRel string) error
+	migrateImport                func(cwd, schemaRel string) error
+	specImport                   func(cwd string, loc []string) error
+	specExport                   func(cwd string, loc []string) error
+	specSyncCheck                func(cwd string) error
+	specSyncDiff                 func(cwd string) error
+	specImplementPrompt          func(cwd string) error
+	specChangeImport             func(cwd string) error
+	specChangeRequest            func(cwd, prompt string) error
+	specChangeSubmit             func(cwd string) error
+	specChangeImplementationDone func(cwd string) error
+	specChangeReviewPrompt       func(cwd string) error
+	specChangeReviewResponse     func(cwd string) error
+	specChangeReviewShow         func(cwd, changeID string) error
 }
 
 func Run(args []string) int {
 	return run(args, deps{
-		getwd:                    os.Getwd,
-		up:                       migrate.Up,
-		implementPrompt:          migrate.ImplementPrompt,
-		migrateImport:            spec.ImportSchema,
-		specImport:               spec.Import,
-		specExport:               spec.Export,
-		specSyncCheck:            spec.SyncCheck,
-		specSyncDiff:             spec.SyncDiff,
-		specImplementPrompt:      spec.ImplementPrompt,
-		specChangeImport:         spec.ChangeImport,
-		specChangeRequest:        spec.ChangeRequest,
-		specChangeReviewPrompt:   spec.ChangeReviewAgentPrompt,
-		specChangeReviewResponse: spec.ChangeReviewAgentResponse,
-		specChangeReviewShow:     spec.ChangeReviewShow,
+		getwd:                        os.Getwd,
+		up:                           migrate.Up,
+		implementPrompt:              migrate.ImplementPrompt,
+		migrateImport:                spec.ImportSchema,
+		specImport:                   spec.Import,
+		specExport:                   spec.Export,
+		specSyncCheck:                spec.SyncCheck,
+		specSyncDiff:                 spec.SyncDiff,
+		specImplementPrompt:          spec.ImplementPrompt,
+		specChangeImport:             spec.ChangeImport,
+		specChangeRequest:            spec.ChangeRequest,
+		specChangeSubmit:             spec.ChangeSubmit,
+		specChangeImplementationDone: spec.ChangeImplementationDone,
+		specChangeReviewPrompt:       spec.ChangeReviewAgentPrompt,
+		specChangeReviewResponse:     spec.ChangeReviewAgentResponse,
+		specChangeReviewShow:         spec.ChangeReviewShow,
 	})
 }
 
@@ -113,6 +117,12 @@ func runHelpTopic(topic []string) int {
 		return 0
 	case "spec change request":
 		printSpecChangeRequestHelp()
+		return 0
+	case "spec change submit":
+		printSpecChangeSubmitHelp()
+		return 0
+	case "spec change implement agent done":
+		printSpecChangeImplementationDoneHelp()
 		return 0
 	case "spec change review":
 		printSpecChangeReviewHelp()
@@ -305,6 +315,10 @@ func parseSpecChange(args []string, d deps) int {
 		return parseSpecChangeImport(args[1:], d)
 	case "request":
 		return parseSpecChangeRequest(args[1:], d)
+	case "submit":
+		return parseSpecChangeSubmit(args[1:], d)
+	case "implement":
+		return parseSpecChangeImplement(args[1:], d)
 	case "review":
 		return parseSpecChangeReview(args[1:], d)
 	}
@@ -314,6 +328,61 @@ func parseSpecChange(args []string, d deps) int {
 	}
 	fmt.Fprintf(os.Stderr, "4sight spec change: unknown command %q\n", args[0])
 	return 1
+}
+
+func parseSpecChangeSubmit(args []string, d deps) int {
+	if len(args) == 1 && (args[0] == "-h" || args[0] == "--help") {
+		printSpecChangeSubmitHelp()
+		return 0
+	}
+	if len(args) != 0 {
+		printSpecChangeSubmitHelp()
+		return 1
+	}
+	cwd, err := d.getwd()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "4sight spec change submit:", err)
+		return 1
+	}
+	if err := d.specChangeSubmit(cwd); err != nil {
+		fmt.Fprintln(os.Stderr, "4sight spec change submit:", err)
+		return 1
+	}
+	return 0
+}
+
+func parseSpecChangeImplement(args []string, d deps) int {
+	if len(args) == 0 {
+		printSpecChangeImplementHelp()
+		return 0
+	}
+	switch args[0] {
+	case "-h", "--help":
+		printSpecChangeImplementHelp()
+		return 0
+	case "agent":
+		if len(args) == 2 && args[1] == "done" {
+			cwd, err := d.getwd()
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "4sight spec change implement agent done:", err)
+				return 1
+			}
+			if err := d.specChangeImplementationDone(cwd); err != nil {
+				fmt.Fprintln(os.Stderr, "4sight spec change implement agent done:", err)
+				return 1
+			}
+			return 0
+		}
+		if len(args) == 3 && (args[1] == "done" && (args[2] == "-h" || args[2] == "--help")) {
+			printSpecChangeImplementationDoneHelp()
+			return 0
+		}
+		printSpecChangeImplementHelp()
+		return 1
+	default:
+		fmt.Fprintf(os.Stderr, "4sight spec change implement: unknown command %q\n", args[0])
+		return 1
+	}
 }
 
 func parseSpecChangeRequest(args []string, d deps) int {
@@ -742,6 +811,8 @@ Record specification filesystem changes in the spec database.
 Commands:
   import            Persist filesystem spec deltas as a workspace change
   request           Save a prompt as a new workspace change
+  submit            Submit the current workspace change for implementation
+  implement         Mark a submitted change as implemented
   review            Review changes to the specification
 
 Options:
@@ -756,6 +827,45 @@ Save a prompt in a new change, make it a child of the current workspace
 change, and update the workspace pointer.
 
 Prints YAML with the new change id.
+
+Options:
+  -h, --help        Show this help
+`)
+}
+
+func printSpecChangeSubmitHelp() {
+	fmt.Print(`4sight spec change submit
+
+Verify on-disk specs match workspace bodies, then advance the submitted
+change pointer and submitted body cache to the workspace change.
+
+This command takes no arguments.
+
+Options:
+  -h, --help        Show this help
+`)
+}
+
+func printSpecChangeImplementHelp() {
+	fmt.Print(`4sight spec change implement
+
+Mark the current submitted change as implemented.
+
+Commands:
+  agent done        Advance the implemented change pointer
+
+Options:
+  -h, --help        Show this help
+`)
+}
+
+func printSpecChangeImplementationDoneHelp() {
+	fmt.Print(`4sight spec change implement agent done
+
+Mark the current submitted change as implemented by advancing the
+implemented change pointer and implemented body cache.
+
+This command takes no arguments.
 
 Options:
   -h, --help        Show this help
