@@ -20,6 +20,7 @@ func ChangeSubmit(cwd string) error {
 type changeSubmitStore interface {
 	listWorkspaceBodies() ([]specDoc, error)
 	changePointers() (workspace, submitted string, err error)
+	changeReviewSummary(changeID string) (summary string, exists bool, err error)
 	applyChangeSubmit(workspace string) error
 }
 
@@ -72,10 +73,18 @@ func runChangeSubmit(root string, st changeSubmitStore, stdout io.Writer) error 
 		_, err := fmt.Fprintln(stdout, "no change to submit")
 		return err
 	}
+	summary, hasSummary, err := st.changeReviewSummary(workspace)
+	if err != nil {
+		return fmt.Errorf("read summary for change %s: %w", workspace, err)
+	}
 	if err := st.applyChangeSubmit(workspace); err != nil {
 		return fmt.Errorf("submit change %s: %w", workspace, err)
 	}
-	_, err = fmt.Fprintf(stdout, "submitted change %s\n", workspace)
+	if hasSummary {
+		_, err = fmt.Fprintf(stdout, "submitted change %s: %s\n", workspace, summary)
+	} else {
+		_, err = fmt.Fprintf(stdout, "submitted change %s\n", workspace)
+	}
 	return err
 }
 
@@ -88,6 +97,20 @@ func (s *doltStore) changePointers() (string, string, error) {
 		return "", "", fmt.Errorf("workspace or submitted change pointer is not set")
 	}
 	return rows[0][0], rows[0][1], nil
+}
+
+func (s *doltStore) changeReviewSummary(changeID string) (string, bool, error) {
+	rows, err := s.queryCSV("SELECT summary FROM spec.change_review WHERE change_id = " + sqlString(changeID))
+	if err != nil {
+		return "", false, err
+	}
+	if len(rows) == 0 {
+		return "", false, nil
+	}
+	if len(rows) != 1 || len(rows[0]) == 0 {
+		return "", false, fmt.Errorf("incomplete review summary for change %s", changeID)
+	}
+	return rows[0][0], true, nil
 }
 
 func (s *doltStore) applyChangeSubmit(workspace string) error {

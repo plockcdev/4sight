@@ -92,19 +92,19 @@ for the prompt as there were no spec changes, then stop.
 
 ## Response
 
-Tell agent to submit a qualitative review of all the spec changes of the current
-workspace change pointer (including any changes due to user prompt) compared to
-the current submitted change pointer (including any due to the prompt), running
-`4sight spec change review agent response` to save the reviews.
+Read the response schema if one exists and follow its constraints.
 
-Tell the agent to read the response schema if there is one and follow any
-imposed constraints.
+Tell agent to submit a qualitative review, which must assess the full range of
+specification changes after the submitted pointer through the workspace pointer,
+including earlier unsubmitted changes. Do not limit the overall review to the
+latest change. The overall why, summary, description, details, and review must
+reflect that full range. Include a file review for every file changed in that
+range.
 
 Instruct agent to also include overall change review and a review for each file
 updated since the "submitted" change pointer.
 
 Require the agent to run `4sight spec change review agent response` with the
-complete review in the required input format and not finish until the command
-succeeds. After it succeeds, the agent must include the overall review and
-per-file findings in its user-facing reply; command success alone is not the
-user-facing review.
+complete review in the required response command format with all its declared
+constraints. Check that the command succeeds. After it succeeds, the agent must
+include the overall review and per-file findings in its user-facing reply.

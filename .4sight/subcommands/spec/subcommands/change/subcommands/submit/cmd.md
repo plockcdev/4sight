@@ -19,6 +19,6 @@ summary, then set `current_changes.submitted_change_id` to
 have no submitted body. On failure, leave both the submitted pointer and body
 cache unchanged.
 
-After commit, print a success message identifying the submitted change.
+After commit, print a success message identifying the submitted change and including its summary from the saved overall change review if there is one.
 
 This command takes no arguments.

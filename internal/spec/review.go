@@ -263,13 +263,19 @@ func runChangeReviewPrompt(root string, st *doltStore, out io.Writer) error {
 	}
 	diffProjectPath := filepath.ToSlash(filepath.Join(".4sight", "changes", state.Workspace, "unified.diff"))
 	fmt.Fprintf(&b, "\nComposite diff: %s\n\nRead the composite diff to review all changes since the last submitted specification. Read the full workspace spec for every file referenced in the diff, read all database schema specs listed above, and read workspace specs related to changed files or the change prompt, including parent command design docs and coding standards as applicable.\n", diffProjectPath)
-	responseSchema := filepath.ToSlash(filepath.Join(".4sight", "subcommands", "spec", "subcommands", "change", "subcommands", "review", "subcommands", "agent", "responseSchema.json"))
-	fmt.Fprintf(&b, "\nRead the response schema at %s and follow its constraints.\n", responseSchema)
+	responseSchemaRel := filepath.Join("subcommands", "spec", "subcommands", "change", "subcommands", "review", "subcommands", "agent", "responseSchema.json")
+	responseSchemaPath := filepath.Join(root, responseSchemaRel)
+	if _, err := os.Stat(responseSchemaPath); err == nil {
+		responseSchema := filepath.ToSlash(filepath.Join(".4sight", responseSchemaRel))
+		fmt.Fprintf(&b, "\nRead the response schema at %s and follow its constraints.\n", responseSchema)
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("check response schema %s: %w", responseSchemaPath, err)
+	}
 	b.WriteString("\nChanged spec files to review:\n")
 	for _, p := range paths {
 		fmt.Fprintf(&b, "- %s\n", p)
 	}
-	b.WriteString("\nSubmit a qualitative review of the current workspace change compared with the last submitted specification by sending one JSON object to `4sight spec change review agent response` on stdin. Include an overall change review and one file_reviews entry for every file updated since submitted. Each file entry needs path, why, summary (max 65 characters), description, details, and body_summary (max 65 characters). Include overall why, summary (max 65 characters), description, details, review, and ready boolean. JSON shape:\n")
+	b.WriteString("\nSubmit a qualitative review of every specification change after the submitted pointer through the workspace pointer, including earlier unsubmitted changes. The overall why, summary, description, details, and review must cover this full range, not just the latest change. Include one file_reviews entry for every file changed in this range. Send one JSON object to `4sight spec change review agent response` on stdin. Each file entry needs path, why, summary (max 65 characters), description, details, and body_summary (max 65 characters). Include overall why, summary (max 65 characters), description, details, review, and ready boolean. JSON shape:\n")
 	b.WriteString("```json\n{\"why\":\"...\",\"summary\":\"...\",\"description\":\"...\",\"details\":\"...\",\"review\":\"...\",\"ready\":true,\"file_reviews\":[{\"path\":\".4sight/subcommands/example/cmd.md\",\"why\":\"...\",\"summary\":\"...\",\"description\":\"...\",\"details\":\"...\",\"body_summary\":\"...\"}]}\n```\n")
 	if state.Prompt != "" {
 		b.WriteString("\n---\nUser request prompt (make any resulting changes to specs on disk, creating command directories or spec files as needed):\n")

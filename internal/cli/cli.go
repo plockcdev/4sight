@@ -20,7 +20,9 @@ type deps struct {
 	specSyncDiff                 func(cwd string) error
 	specImplementPrompt          func(cwd string) error
 	specChangeImport             func(cwd string) error
+	specChangeList               func(cwd string) error
 	specChangeRequest            func(cwd, prompt string) error
+	specChangeStatus             func(cwd string) error
 	specChangeSubmit             func(cwd string) error
 	specChangeImplementationDone func(cwd string) error
 	specChangeReviewPrompt       func(cwd string) error
@@ -40,7 +42,9 @@ func Run(args []string) int {
 		specSyncDiff:                 spec.SyncDiff,
 		specImplementPrompt:          spec.ImplementPrompt,
 		specChangeImport:             spec.ChangeImport,
+		specChangeList:               spec.ChangeList,
 		specChangeRequest:            spec.ChangeRequest,
+		specChangeStatus:             spec.ChangeStatus,
 		specChangeSubmit:             spec.ChangeSubmit,
 		specChangeImplementationDone: spec.ChangeImplementationDone,
 		specChangeReviewPrompt:       spec.ChangeReviewAgentPrompt,
@@ -115,8 +119,14 @@ func runHelpTopic(topic []string) int {
 	case "spec change import":
 		printSpecChangeImportHelp()
 		return 0
+	case "spec change list":
+		printSpecChangeListHelp()
+		return 0
 	case "spec change request":
 		printSpecChangeRequestHelp()
+		return 0
+	case "spec change status":
+		printSpecChangeStatusHelp()
 		return 0
 	case "spec change submit":
 		printSpecChangeSubmitHelp()
@@ -143,7 +153,7 @@ func runHelpTopic(topic []string) int {
 		printMigrateImportHelp()
 		return 0
 	default:
-		fmt.Fprintf(os.Stderr, "4sight: unknown help topic %q (try: migrate, migrate up, migrate import, migrate implement prompt, spec, spec import, spec export, spec sync-check, spec sync-diff, spec implement prompt, spec change, spec change import, spec change request)\n", strings.Join(topic, " "))
+		fmt.Fprintf(os.Stderr, "4sight: unknown help topic %q (try: migrate, migrate up, migrate import, migrate implement prompt, spec, spec import, spec export, spec sync-check, spec sync-diff, spec implement prompt, spec change, spec change import, spec change list, spec change request, spec change status)\n", strings.Join(topic, " "))
 		return 1
 	}
 }
@@ -313,8 +323,12 @@ func parseSpecChange(args []string, d deps) int {
 		return 0
 	case "import":
 		return parseSpecChangeImport(args[1:], d)
+	case "list":
+		return parseSpecChangeList(args[1:], d)
 	case "request":
 		return parseSpecChangeRequest(args[1:], d)
+	case "status":
+		return parseSpecChangeStatus(args[1:], d)
 	case "submit":
 		return parseSpecChangeSubmit(args[1:], d)
 	case "implement":
@@ -346,6 +360,48 @@ func parseSpecChangeSubmit(args []string, d deps) int {
 	}
 	if err := d.specChangeSubmit(cwd); err != nil {
 		fmt.Fprintln(os.Stderr, "4sight spec change submit:", err)
+		return 1
+	}
+	return 0
+}
+
+func parseSpecChangeList(args []string, d deps) int {
+	if len(args) == 1 && (args[0] == "-h" || args[0] == "--help") {
+		printSpecChangeListHelp()
+		return 0
+	}
+	if len(args) != 0 {
+		printSpecChangeListHelp()
+		return 1
+	}
+	cwd, err := d.getwd()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "4sight spec change list:", err)
+		return 1
+	}
+	if err := d.specChangeList(cwd); err != nil {
+		fmt.Fprintln(os.Stderr, "4sight spec change list:", err)
+		return 1
+	}
+	return 0
+}
+
+func parseSpecChangeStatus(args []string, d deps) int {
+	if len(args) == 1 && (args[0] == "-h" || args[0] == "--help") {
+		printSpecChangeStatusHelp()
+		return 0
+	}
+	if len(args) != 0 {
+		printSpecChangeStatusHelp()
+		return 1
+	}
+	cwd, err := d.getwd()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "4sight spec change status:", err)
+		return 1
+	}
+	if err := d.specChangeStatus(cwd); err != nil {
+		fmt.Fprintln(os.Stderr, "4sight spec change status:", err)
 		return 1
 	}
 	return 0
@@ -810,10 +866,36 @@ Record specification filesystem changes in the spec database.
 
 Commands:
   import            Persist filesystem spec deltas as a workspace change
+  list              List changes with their summaries
   request           Save a prompt as a new workspace change
+  status            Show the current change pointers
   submit            Submit the current workspace change for implementation
   implement         Mark a submitted change as implemented
   review            Review changes to the specification
+
+Options:
+  -h, --help        Show this help
+`)
+}
+
+func printSpecChangeListHelp() {
+	fmt.Print(`4sight spec change list
+
+List specification changes with their IDs and summaries.
+
+This command takes no arguments.
+
+Options:
+  -h, --help        Show this help
+`)
+}
+
+func printSpecChangeStatusHelp() {
+	fmt.Print(`4sight spec change status
+
+Display the current workspace, submitted, and implemented change IDs.
+
+This command takes no arguments.
 
 Options:
   -h, --help        Show this help
