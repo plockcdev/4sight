@@ -79,6 +79,9 @@ update code to work with the pending schema until current matches submitted.
 When the user requests a spec review, run `4sight spec change review agent
 prompt` and follow the instructions
 
+After review completes, show the change level review text and then the command
+for user to view the review in detail
+
 # Handling spec change requests
 
 When the user requests a change to the spec and provides instructions on those

@@ -32,12 +32,21 @@ the 4sight binary.
 
 Leverage the asset contents as instructed, source comes first:
 
-```
-- root_AGENTS.md:
-    contents appears once at the end of the repo root AGENTS.md within armor like
-    "---- BEGIN 4SIGHT ----" and ending with "---- END 4SIGHT ----"
-- 4sight_AGENTS.md:
-    overwrite as AGENTS.md in the .4sight directory
-- coding.md:
-    if .4sight/coding.md does not exist, create it, otherwise leave alone
-```
+### root_AGENTS.md
+
+search for exact match old (not current) versions of the content and remove,
+when comparing, trim each line of begin/end whitespace from both
+
+contents of this asset file should appear only once at the end of the repo root
+AGENTS.md, if missing, add it, remove duplicates
+
+track older versions in the embedded directory as copied files for reference,
+copying over only when updated in assets. naming is an impmlementation detail
+
+### 4sight_AGENTS.md
+
+overwrite as AGENTS.md in the .4sight directory
+
+### coding.md
+
+if .4sight/coding.md does not exist, create it, otherwise leave alone

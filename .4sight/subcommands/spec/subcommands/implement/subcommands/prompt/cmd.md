@@ -1,4 +1,4 @@
-# 4sight spec implement prompt [--ignore-workspace]
+# 4sight spec implement prompt
 
 Called to generate a prompt to instruct an agent to read code spec and update
 codebase
@@ -7,31 +7,28 @@ codebase
 
 Read the current change pointers.
 
+### Check matching
+
+If the specs in workspace does not match current workspace changes (the last
+body of each file going up the change stack), then abort and tell end user to
+import or sync the files.
+
 ### Check submitted vs workspace pointer
 
 If the submitted and workspace pointers are different, abort and tell the user
 the changes and their summaries since the submitted pointer, and that they can
-either submit or send the ignore flag.
+submit.
 
 ### Check implemented vs submitted
 
 If the implemented and submitted pointers are the same, then nothing to be done,
 stop after telling user nothing to do.
 
-### Check matching
-
-If ignore-workspace flag was sent, skip the checks in this section.
-
-If the specs in workspace does not match current workspace changes (the last
-body of each file going up the change stack), then abort and tell end user to
-import or sync the files.
-
 ## Read Specs
 
 Tell agent to read:
 
-- all the design.md and cmd.md docs for top level and all
-subcommands
+- all the design spec for top level and all subcommands
 - all the schemas in `.4sight/schemas`
 
 ## Check Spec Problems

@@ -11,6 +11,8 @@ Currently supported code spec docs, all found in the `.4sight` directory:
 - schema specs only in `.4sight/schemas` directory
   - `<db type>_<db name>.md` - e.g. `dolt_myapp.md`
 
+whenever "design specs" are mentioned, it means the above list
+
 ## Bodies
 
 Bodies on disk when compared to db body should always be compared with the
