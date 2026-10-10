@@ -1,3 +1,6 @@
+Unless specified, use go for the application, and for scripting needs, unless
+specified otherwise, use nushell
+
 ## golang
 
 Use go 1.27 or higher
@@ -13,4 +16,3 @@ After code changes are ready, run package targeted:
 - go fix
 - golangci-lint fmt
 - golangci-lint
-
