@@ -66,8 +66,8 @@ When a subcommand has no data arguments, then infer the need for a help
 subcommand, it does not need a cmd.md specification. This subcommand should not
 have an error exit.
 
-The help should list all the available subcommands, options, and arguments, but
-not usage
+The help should list all the available subcommands, options, and arguments which
+includes the usage command, but not contents of any USAGE docs.
 
 Help is shown for any argument syntax issues. Usage / Semantic argument issues
 do not show the help, but should provide enough context about the error that an
@@ -89,6 +89,7 @@ or any subcommand) will simply print the relevant usage file. If a usage
 argument is present, then any other data arguments or flags are an error (show
 help)
 
+Embed the usage docs into the application
 ## Completing Implmentation
 
 After successfully implementing the submitted change, instruct the agent to run
