@@ -1,0 +1,1 @@
+Run `4sight spec change review agent prompt` to generate a composite diff and review instructions.

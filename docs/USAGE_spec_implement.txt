@@ -1,0 +1,1 @@
+Run `4sight spec implement prompt` after submitting a code spec change.

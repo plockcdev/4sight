@@ -1,0 +1,1 @@
+../../../.4sight/subcommands/init/assets/4sight_AGENTS.md

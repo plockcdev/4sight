@@ -1,0 +1,1 @@
+Run `4sight spec implement prompt` to check state and print implementation instructions.

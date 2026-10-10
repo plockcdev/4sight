@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	initcmd "foursight.dev/4sight/internal/init"
 	"foursight.dev/4sight/internal/migrate"
 	"foursight.dev/4sight/internal/spec"
 )
@@ -28,6 +29,7 @@ type deps struct {
 	specChangeReviewPrompt       func(cwd string) error
 	specChangeReviewResponse     func(cwd string) error
 	specChangeReviewShow         func(cwd, changeID string) error
+	init                         func(cwd string) error
 }
 
 func Run(args []string) int {
@@ -50,10 +52,17 @@ func Run(args []string) int {
 		specChangeReviewPrompt:       spec.ChangeReviewAgentPrompt,
 		specChangeReviewResponse:     spec.ChangeReviewAgentResponse,
 		specChangeReviewShow:         spec.ChangeReviewShow,
+		init:                         initcmd.Run,
 	})
 }
 
 func run(args []string, d deps) int {
+	if code, handled := runUsage(args); handled {
+		return code
+	}
+	if code, handled := runExplicitHelp(args); handled {
+		return code
+	}
 	if len(args) == 0 {
 		printMainHelp()
 		return 0
@@ -69,19 +78,42 @@ func run(args []string, d deps) int {
 		return parseMigrate(args[1:], d)
 	case "spec":
 		return parseSpec(args[1:], d)
+	case "init":
+		return parseInit(args[1:], d)
 	}
 	if strings.HasPrefix(args[0], "-") {
 		printMainHelp()
 		return 1
 	}
+	printMainHelp()
 	fmt.Fprintf(os.Stderr, "4sight: unknown command %q\n", args[0])
 	return 1
+}
+
+func parseInit(args []string, d deps) int {
+	if len(args) != 0 {
+		fmt.Fprintln(os.Stderr, "4sight init: does not take arguments")
+		return 1
+	}
+	cwd, err := d.getwd()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "4sight init:", err)
+		return 1
+	}
+	if err := d.init(cwd); err != nil {
+		fmt.Fprintln(os.Stderr, "4sight init:", err)
+		return 1
+	}
+	return 0
 }
 
 func runHelpTopic(topic []string) int {
 	switch strings.Join(topic, " ") {
 	case "migrate":
 		printMigrateHelp()
+		return 0
+	case "init":
+		printInitHelp()
 		return 0
 	case "migrate up":
 		printMigrateUpHelp()
@@ -178,6 +210,7 @@ func parseMigrate(args []string, d deps) int {
 		printMigrateHelp()
 		return 1
 	}
+	printMigrateHelp()
 	fmt.Fprintf(os.Stderr, "4sight migrate: unknown command %q\n", args[0])
 	return 1
 }
@@ -198,6 +231,7 @@ func parseMigrateImplement(args []string, d deps) int {
 		printMigrateImplementHelp()
 		return 1
 	}
+	printMigrateImplementHelp()
 	fmt.Fprintf(os.Stderr, "4sight migrate implement: unknown command %q\n", args[0])
 	return 1
 }
@@ -217,6 +251,7 @@ func parseMigrateImplementPrompt(args []string, d deps) int {
 		}
 	}
 	if len(args) != 1 {
+		printMigrateImplementPromptHelp()
 		fmt.Fprintln(os.Stderr, "4sight migrate implement prompt: requires exactly one schema spec path")
 		return 1
 	}
@@ -258,6 +293,7 @@ func parseSpec(args []string, d deps) int {
 		printSpecHelp()
 		return 1
 	}
+	printSpecHelp()
 	fmt.Fprintf(os.Stderr, "4sight spec: unknown command %q\n", args[0])
 	return 1
 }
@@ -278,6 +314,7 @@ func parseSpecImplement(args []string, d deps) int {
 		printSpecImplementHelp()
 		return 1
 	}
+	printSpecImplementHelp()
 	fmt.Fprintf(os.Stderr, "4sight spec implement: unknown command %q\n", args[0])
 	return 1
 }
@@ -297,6 +334,7 @@ func parseSpecImplementPrompt(args []string, d deps) int {
 		}
 	}
 	if len(args) > 0 {
+		printSpecImplementPromptHelp()
 		fmt.Fprintln(os.Stderr, "4sight spec implement prompt: does not take arguments")
 		return 1
 	}
@@ -340,6 +378,7 @@ func parseSpecChange(args []string, d deps) int {
 		printSpecChangeHelp()
 		return 1
 	}
+	printSpecChangeHelp()
 	fmt.Fprintf(os.Stderr, "4sight spec change: unknown command %q\n", args[0])
 	return 1
 }
@@ -417,6 +456,10 @@ func parseSpecChangeImplement(args []string, d deps) int {
 		printSpecChangeImplementHelp()
 		return 0
 	case "agent":
+		if len(args) == 1 {
+			printSpecChangeImplementHelp()
+			return 0
+		}
 		if len(args) == 2 && args[1] == "done" {
 			cwd, err := d.getwd()
 			if err != nil {
@@ -436,6 +479,7 @@ func parseSpecChangeImplement(args []string, d deps) int {
 		printSpecChangeImplementHelp()
 		return 1
 	default:
+		printSpecChangeImplementHelp()
 		fmt.Fprintf(os.Stderr, "4sight spec change implement: unknown command %q\n", args[0])
 		return 1
 	}
@@ -447,6 +491,7 @@ func parseSpecChangeRequest(args []string, d deps) int {
 		return 0
 	}
 	if len(args) == 0 {
+		printSpecChangeRequestHelp()
 		fmt.Fprintln(os.Stderr, "4sight spec change request: requires a prompt")
 		return 1
 	}
@@ -498,6 +543,7 @@ func parseSpecChangeReview(args []string, d deps) int {
 		return 0
 	}
 	fmt.Fprintf(os.Stderr, "4sight spec change review: unknown command %q\n", args[0])
+	printSpecChangeReviewHelp()
 	return 1
 }
 
@@ -542,6 +588,7 @@ func parseSpecChangeReviewAgent(args []string, d deps) int {
 		return 0
 	}
 	fmt.Fprintf(os.Stderr, "4sight spec change review agent: unknown command %q\n", args[0])
+	printSpecChangeReviewAgentHelp()
 	return 1
 }
 
@@ -560,6 +607,7 @@ func parseSpecChangeImport(args []string, d deps) int {
 		}
 	}
 	if len(args) > 0 {
+		printSpecChangeImportHelp()
 		fmt.Fprintln(os.Stderr, "4sight spec change import: does not take arguments")
 		return 1
 	}
@@ -590,6 +638,7 @@ func parseSpecExport(args []string, d deps) int {
 		}
 	}
 	if len(args) == 0 {
+		printSpecExportHelp()
 		fmt.Fprintln(os.Stderr, "4sight spec export: requires a spec file location (command path then file name)")
 		return 1
 	}
@@ -620,6 +669,7 @@ func parseSpecSyncDiff(args []string, d deps) int {
 		}
 	}
 	if len(args) > 0 {
+		printSpecSyncDiffHelp()
 		fmt.Fprintln(os.Stderr, "4sight spec sync-diff: does not take arguments")
 		return 1
 	}
@@ -650,6 +700,7 @@ func parseSpecSyncCheck(args []string, d deps) int {
 		}
 	}
 	if len(args) > 0 {
+		printSpecSyncCheckHelp()
 		fmt.Fprintln(os.Stderr, "4sight spec sync-check: does not take arguments")
 		return 1
 	}
@@ -680,6 +731,7 @@ func parseMigrateImport(args []string, d deps) int {
 		}
 	}
 	if len(args) != 1 {
+		printMigrateImportHelp()
 		fmt.Fprintln(os.Stderr, "4sight migrate import: requires exactly one schema spec path")
 		return 1
 	}
@@ -710,6 +762,7 @@ func parseSpecImport(args []string, d deps) int {
 		}
 	}
 	if len(args) == 0 {
+		printSpecImportHelp()
 		fmt.Fprintln(os.Stderr, "4sight spec import: requires a spec file location (command path then file name)")
 		return 1
 	}
@@ -740,6 +793,7 @@ func parseMigrateUp(args []string, d deps) int {
 		}
 	}
 	if len(args) > 0 {
+		printMigrateUpHelp()
 		fmt.Fprintln(os.Stderr, "4sight migrate up: does not take arguments")
 		return 1
 	}
@@ -759,6 +813,7 @@ func printMainHelp() {
 	fmt.Print(`4sight — project tooling
 
 Commands:
+  init              Initialize a repository for 4sight
   help              Show this help
   migrate           Apply database schema migrations
   spec              Import and manage specification bodies
@@ -767,6 +822,16 @@ Global options:
   -h, --help        Show this help
 
 Run "4sight help <command>" or "<command> --help" for command help.
+`)
+}
+
+func printInitHelp() {
+	fmt.Print(`4sight init
+
+Initialize the current git repository for 4sight.
+
+Options:
+  -h, --help        Show this help
 `)
 }
 

@@ -1,0 +1,1 @@
+../../../.4sight/subcommands/init/assets/coding.md

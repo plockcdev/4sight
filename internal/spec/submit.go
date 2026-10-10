@@ -99,6 +99,28 @@ func (s *doltStore) changePointers() (string, string, error) {
 	return rows[0][0], rows[0][1], nil
 }
 
+func (s *doltStore) changesBetween(submitted, workspace string) ([]string, error) {
+	query := "SELECT c.id, COALESCE(cr.summary, 'no summary yet') " +
+		"FROM spec.changes c " +
+		"JOIN spec.changes_closure from_submitted ON from_submitted.child_id = c.id " +
+		"JOIN spec.changes_closure to_workspace ON to_workspace.parent_id = c.id " +
+		"LEFT JOIN spec.change_review cr ON cr.change_id = c.id " +
+		"WHERE from_submitted.parent_id = " + sqlString(submitted) +
+		" AND from_submitted.depth > 0 AND to_workspace.child_id = " + sqlString(workspace) +
+		" ORDER BY from_submitted.depth ASC"
+	rows, err := s.queryCSV(query)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if len(row) >= 2 {
+			items = append(items, row[0]+": "+row[1])
+		}
+	}
+	return items, nil
+}
+
 func (s *doltStore) changeReviewSummary(changeID string) (string, bool, error) {
 	rows, err := s.queryCSV("SELECT summary FROM spec.change_review WHERE change_id = " + sqlString(changeID))
 	if err != nil {

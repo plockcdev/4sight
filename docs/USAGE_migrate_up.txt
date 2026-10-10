@@ -1,0 +1,1 @@
+Run `4sight migrate up` from the project root after submitting a schema migration.

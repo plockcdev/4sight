@@ -1,0 +1,1 @@
+Run `4sight migrate implement prompt dolt_example.md` to generate migration instructions.

@@ -1,0 +1,1 @@
+Run `4sight spec change review agent prompt` to get review instructions, or `4sight spec change review show` to view a saved review.

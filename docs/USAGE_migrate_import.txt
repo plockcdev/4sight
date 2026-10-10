@@ -1,0 +1,1 @@
+Run `4sight migrate import dolt_example.md` to import a database schema spec.

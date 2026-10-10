@@ -1,0 +1,1 @@
+Pipe the required JSON review to `4sight spec change review agent response`.

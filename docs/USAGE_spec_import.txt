@@ -1,0 +1,1 @@
+Pass a command path and filename, for example `4sight spec import spec implement prompt cmd.md`.

@@ -1,0 +1,1 @@
+Run `4sight spec change list` to list changes and saved review summaries.
