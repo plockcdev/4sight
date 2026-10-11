@@ -73,13 +73,6 @@ enough
 - review: review of the spec change for quality of specification and logic consistency, must be non-empty
 - ready: true/false if spec meets minimum specification to implement the change
 
-The change review for the root change should be created by migration with empty
-strings for description/details:
-
-- id: `ch-000`
-why: to provide an anchor for all changes summary: initialization review:
-perfect ready: true
-
 ## current_changes
 
 - implemented: the latest implemented change, initialized to the root change

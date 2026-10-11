@@ -30,18 +30,26 @@ Copy each database's migration files through the source repo's `current`
 pointer. Do not copy migrations after that pointer. Do not use the source repo's
 `current` or `submitted` symlink as the target repo's migration state.
 
-## Runtime DB Setup
+## Runtime spec database bootstrap
 
-When a user runs `4sight init` in a target repo:
+When a user runs `4sight init`, initialize 4sight's internal spec database in
+the target repo's `.4sight/db`:
 
-1. Initialize Dolt in the target repo's `.4sight/db` if it is not initialized.
-2. Apply the embedded `4sight_migration` migrations in order, using the target
-database's tracking table to skip migrations already applied. 3. Apply the
-embedded `spec` migrations in order using the same target tracking state. 4.
-Record each applied migration in the target's migration tracking database.
-
-Do not modify the target repo's migration files or symlinks as part of this
-embedded bootstrap.
+- Initialize Dolt if `.4sight/db` is not already initialized.
+- Apply the embedded `4sight_migration` migration SQL directly from
+the binary, in migration order. Track applied migration IDs in the target's
+`4sight_migration` database.
+- If the tracking table does not exist, apply the initial
+`4sight_migration` migration first; it creates the table. Then record that
+migration as applied.
+- Skip migrations whose IDs are already recorded in the target tracking table.
+- Do not invoke `4sight migrate up`. That command manages the target
+application's databases.
+- Do not create, read, or update migration files or `current`/`submitted`
+symlinks in the target repo. This bootstrap applies only to 4sight's internal
+`spec` and `4sight_migration` databases.
+- After all embedded 4sight_migration migrations have been applied and recorded,
+do the same for the spec database.
 
 ## Write Embedded Assets
 
