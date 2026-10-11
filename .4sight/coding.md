@@ -16,3 +16,5 @@ After code changes are ready, run package targeted:
 - go fix
 - golangci-lint fmt
 - golangci-lint
+
+main package lives under git root `./cmd/<appname>/`

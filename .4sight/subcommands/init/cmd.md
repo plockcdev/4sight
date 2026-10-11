@@ -77,3 +77,8 @@ overwrite as AGENTS.md in the .4sight directory
 ### coding.md
 
 if .4sight/coding.md does not exist, create it, otherwise leave alone
+
+## Import Specs
+
+If the workspace change is at ch-000, then init runs `4sight spec change import`
+to pick up the initialized spec files
