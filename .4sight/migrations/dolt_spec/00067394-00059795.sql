@@ -13,17 +13,6 @@ WHERE NOT EXISTS (
   WHERE a.child_id = c.id AND a.depth > 0
 );
 
-INSERT INTO spec.change_id_map (old_id, new_id)
-SELECT ranked.id, CONCAT('ch-', LPAD(ranked.n, 3, '0'))
-FROM (
-  SELECT c.id, ROW_NUMBER() OVER (ORDER BY c.id) AS n
-  FROM spec.changes c
-  WHERE EXISTS (
-    SELECT 1 FROM spec.changes_closure a
-    WHERE a.child_id = c.id AND a.depth > 0
-  )
-) ranked;
-
 ALTER TABLE spec.changes
   ADD COLUMN id_text CHAR(6) NULL AFTER id;
 

@@ -20,15 +20,34 @@ directory
 
 Create target directory if missing.
 
-## DB
+### 4sight Build-time migration assets
 
-Run `dolt init` inside `.4sight/db` for first time setup only.
+During implementation of `4sight init`, copy the migrations from the 4sight
+source repo's `.4sight/migrations` directory to `internal/init/migrations`, then
+embed that directory in the binary.
+
+Copy each database's migration files through the source repo's `current`
+pointer. Do not copy migrations after that pointer. Do not use the source repo's
+`current` or `submitted` symlink as the target repo's migration state.
+
+## Runtime DB Setup
+
+When a user runs `4sight init` in a target repo:
+
+1. Initialize Dolt in the target repo's `.4sight/db` if it is not initialized.
+2. Apply the embedded `4sight_migration` migrations in order, using the target
+database's tracking table to skip migrations already applied. 3. Apply the
+embedded `spec` migrations in order using the same target tracking state. 4.
+Record each applied migration in the target's migration tracking database.
+
+Do not modify the target repo's migration files or symlinks as part of this
+embedded bootstrap.
 
 ## Write Embedded Assets
 
-Create symlinks in an `4sight` directory under the init implementation directory
-pointing to the files in the assets directory, and then embed the directory into
-the 4sight binary.
+In 4sight code, create symlinks in a `4sight` directory under the init
+implementation directory pointing to the files in the assets directory, and then
+embed the directory into the 4sight binary.
 
 Leverage the asset contents as instructed, source comes first:
 

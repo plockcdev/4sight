@@ -6,22 +6,6 @@ ALTER TABLE spec.file_change_reviews
   ADD COLUMN body_summary VARCHAR(65) NULL AFTER summary,
   ADD KEY fk_file_change_reviews_change_review_id (change_review_id);
 
-UPDATE spec.file_change_reviews AS fcr
-SET change_review_id = (
-  SELECT cr.id
-  FROM spec.file_changes AS fc
-  JOIN spec.changes_closure AS cc
-    ON cc.parent_id = fc.change_id
-  JOIN spec.change_review AS cr
-    ON cr.change_id = cc.child_id
-  WHERE fc.id = fcr.file_change_id
-  ORDER BY cc.depth ASC, cr.id ASC
-  LIMIT 1
-);
-
-UPDATE spec.file_change_reviews
-SET body_summary = 'unavailable for legacy review';
-
 ALTER TABLE spec.file_change_reviews
   MODIFY COLUMN change_review_id BIGINT UNSIGNED NOT NULL,
   MODIFY COLUMN body_summary VARCHAR(65) NOT NULL,

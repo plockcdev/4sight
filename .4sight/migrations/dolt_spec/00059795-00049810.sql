@@ -36,19 +36,6 @@ CREATE TABLE spec.change_review (
   CONSTRAINT change_review_score_chk CHECK (score <= 100)
 );
 
-INSERT INTO spec.change_review (
-  name, change_id, why, summary, description, details, score, review
-) VALUES (
-  'initial',
-  1,
-  'to provide an anchor for all changes',
-  'initialization',
-  '',
-  '',
-  100,
-  'perfect'
-);
-
 CREATE TABLE spec.current_changes (
   singleton TINYINT NOT NULL DEFAULT 1 PRIMARY KEY,
   implemented_change_id BIGINT UNSIGNED NOT NULL,
@@ -100,62 +87,11 @@ CREATE TABLE spec.bodies_migrated (
   CONSTRAINT bodies_migrated_state_chk CHECK (state IN ('implemented', 'submitted', 'workspace'))
 );
 
-INSERT INTO spec.bodies_migrated (body, file_id, file_change_id, state, ieee_crc32, summary)
-SELECT
-  b.body,
-  fc.file_id,
-  b.file_change_id,
-  'workspace',
-  CAST(CRC32(CONCAT(
-    SUBSTRING(b.body, 1, 2000),
-    SUBSTRING(b.body, 2001, 2000),
-    SUBSTRING(b.body, 4001, 2000),
-    SUBSTRING(b.body, 6001, 2000),
-    SUBSTRING(b.body, 8001, 2000),
-    SUBSTRING(b.body, 10001, 2000),
-    SUBSTRING(b.body, 12001, 2000),
-    SUBSTRING(b.body, 14001, 2000),
-    SUBSTRING(b.body, 16001, 2000),
-    SUBSTRING(b.body, 18001, 2000),
-    SUBSTRING(b.body, 20001, 2000),
-    SUBSTRING(b.body, 22001, 2000),
-    SUBSTRING(b.body, 24001, 2000),
-    SUBSTRING(b.body, 26001, 2000),
-    SUBSTRING(b.body, 28001, 2000),
-    SUBSTRING(b.body, 30001, 2000),
-    SUBSTRING(b.body, 32001, 2000),
-    SUBSTRING(b.body, 34001, 2000),
-    SUBSTRING(b.body, 36001, 2000),
-    SUBSTRING(b.body, 38001, 2000),
-    SUBSTRING(b.body, 40001, 2000),
-    SUBSTRING(b.body, 42001, 2000),
-    SUBSTRING(b.body, 44001, 2000),
-    SUBSTRING(b.body, 46001, 2000),
-    SUBSTRING(b.body, 48001, 2000)
-  )) AS UNSIGNED),
-  ''
-FROM spec.bodies b
-JOIN spec.file_changes fc ON fc.id = b.file_change_id
-JOIN (
-  SELECT fc2.file_id, MAX(fc2.id) AS max_file_change_id
-  FROM spec.bodies b2
-  JOIN spec.file_changes fc2 ON fc2.id = b2.file_change_id
-  GROUP BY fc2.file_id
-) latest ON latest.file_id = fc.file_id AND latest.max_file_change_id = fc.id;
-
 DROP TABLE spec.bodies;
 
 USE spec;
 
 RENAME TABLE bodies_migrated TO bodies;
-
-DELETE fc FROM spec.file_changes fc
-JOIN (
-  SELECT file_id, MAX(id) AS max_id
-  FROM spec.file_changes
-  GROUP BY file_id
-) latest ON latest.file_id = fc.file_id
-WHERE fc.id != latest.max_id;
 
 CREATE UNIQUE INDEX file_changes_change_file_uniq
   ON spec.file_changes (change_id, file_id);
