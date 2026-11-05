@@ -1,13 +1,65 @@
 package spec
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"text/template"
 )
+
+const implementPromptTemplate = `Read these design and command specification documents from the spec database to understand the application behavior. These code specification files inform application behavior; read all listed files and applicable inherited design and coding standards:
+{{range .CodeSpecs}}
+----- SPEC {{.Path}} -----
+{{.Body}}{{if not (endsInNewline .Body)}}
+{{end}}----- END SPEC -----
+{{end}}{{if .RemovedCodeSpecs}}
+These code specs were removed (their workspace bodies are empty):
+{{range .RemovedCodeSpecs}}- {{.}}
+{{end}}{{end}}
+Read these database schema specifications:
+Group the schemas by database type:
+{{range .SchemaGroups}}
+{{.DBType}}:
+{{range .Paths}}- {{.}}
+{{end}}{{end}}
+Review the application code specification and update the code to match the spec.
+Do not update the schema.
+If the schema needs a spec change or a migration to be compatible with the code spec, stop and tell the user the gap (schema spec or migration, and what kinds of changes are needed).
+
+Check the schema specification and implementation for logic, integrity, and performance problems, mismatches with the code specification, and behavior that cannot be inferred. If a problem prevents safe implementation, stop and report the file, line number, and a search string, then recommend how to resolve it using the 4sight spec or migration commands. Before code that depends on a schema change, verify its current and submitted migration links match; if not, stop and ask the user to run {{.MigrateUpCommand}}.
+
+Remove command implementations whose cmd.md specs no longer exist. Update command routing, help, and usage accordingly.
+
+Update command help when command structure, arguments, options, or flags change. Show help for syntax errors and for --help at any command depth. If help is combined with other arguments, show help and return an error. Help lists commands, options, and arguments, not usage. Semantic errors should explain the problem without help.
+
+Maintain docs/USAGE.txt and docs/USAGE_<subcommand>.txt for every command recursively. Usage is brief practical guidance with examples. {{.UsageCommand}} or {{.UsageFlag}} prints the corresponding usage file; extra arguments are an error and show help.
+
+After successfully implementing the submitted change, run {{.CompleteCommand}} to mark implementation complete.
+`
+
+type promptCodeSpec struct {
+	Path string
+	Body string
+}
+
+type promptSchemaGroup struct {
+	DBType string
+	Paths  []string
+}
+
+type implementPromptData struct {
+	CodeSpecs        []promptCodeSpec
+	RemovedCodeSpecs []string
+	SchemaGroups     []promptSchemaGroup
+	MigrateUpCommand string
+	UsageCommand     string
+	UsageFlag        string
+	CompleteCommand  string
+}
 
 func ImplementPrompt(cwd string) error {
 	root, err := findMetadataRoot(cwd)
@@ -58,18 +110,32 @@ func runImplementPrompt(metadataRoot string, st store, stdout io.Writer) error {
 			return err
 		}
 	}
-	var codeDocs []specDoc
+	data := implementPromptData{
+		MigrateUpCommand: "`4sight migrate up`",
+		UsageCommand:     "`usage`",
+		UsageFlag:        "`--usage`",
+		CompleteCommand:  "`4sight spec change implement agent done`",
+	}
+	var removedCodeDocs []specDoc
 	for _, doc := range docs {
 		if isCodeSpecName(doc.Name) {
-			codeDocs = append(codeDocs, doc)
+			if doc.Body == "" {
+				removedCodeDocs = append(removedCodeDocs, doc)
+				continue
+			}
+			data.CodeSpecs = append(data.CodeSpecs, promptCodeSpec{
+				Path: displaySpecPath(doc.Dir, doc.Name),
+				Body: doc.Body,
+			})
 		}
 	}
-	slices.SortFunc(codeDocs, func(a, b specDoc) int {
-		if c := strings.Compare(a.Dir, b.Dir); c != 0 {
-			return c
-		}
-		return strings.Compare(a.Name, b.Name)
+	slices.SortFunc(data.CodeSpecs, func(a, b promptCodeSpec) int {
+		return strings.Compare(a.Path, b.Path)
 	})
+	for _, doc := range removedCodeDocs {
+		data.RemovedCodeSpecs = append(data.RemovedCodeSpecs, displaySpecPath(doc.Dir, doc.Name))
+	}
+	slices.Sort(data.RemovedCodeSpecs)
 
 	schemas, err := listSchemaSpecs(filepath.Join(metadataRoot, "schemas"))
 	if err != nil {
@@ -77,37 +143,28 @@ func runImplementPrompt(metadataRoot string, st store, stdout io.Writer) error {
 	}
 
 	projectRoot := filepath.Dir(metadataRoot)
-	var b strings.Builder
-	b.WriteString("Read these design and command specification documents from the spec database to understand the application behavior. These code specification files inform application behavior; read all listed files and applicable inherited design and coding standards:\n")
-	for _, doc := range codeDocs {
-		fmt.Fprintf(&b, "\n----- SPEC %s -----\n", displaySpecPath(doc.Dir, doc.Name))
-		b.WriteString(doc.Body)
-		if !strings.HasSuffix(doc.Body, "\n") {
-			b.WriteByte('\n')
-		}
-		b.WriteString("----- END SPEC -----\n")
-	}
-	b.WriteByte('\n')
-	b.WriteString("Read these database schema specifications:\nGroup the schemas by database type:\n")
 	lastType := ""
 	for _, schema := range schemas {
 		base := filepath.Base(schema)
 		dbType, _, _ := strings.Cut(base, "_")
 		if dbType != lastType {
-			fmt.Fprintf(&b, "\n%s:\n", dbType)
+			data.SchemaGroups = append(data.SchemaGroups, promptSchemaGroup{DBType: dbType})
 			lastType = dbType
 		}
-		fmt.Fprintf(&b, "- %s\n", relFromProject(projectRoot, schema))
+		group := &data.SchemaGroups[len(data.SchemaGroups)-1]
+		group.Paths = append(group.Paths, relFromProject(projectRoot, schema))
 	}
-	b.WriteByte('\n')
-	b.WriteString("Review the application code specification and update the code to match the spec.\n")
-	b.WriteString("Do not update the schema.\n")
-	b.WriteString("If the schema needs a spec change or a migration to be compatible with the code spec, stop and tell the user the gap (schema spec or migration, and what kinds of changes are needed).\n")
-	b.WriteString("\nCheck the schema specification and implementation for logic, integrity, and performance problems, mismatches with the code specification, and behavior that cannot be inferred. If a problem prevents safe implementation, stop and report the file, line number, and a search string, then recommend how to resolve it using the 4sight spec or migration commands. Before code that depends on a schema change, verify its current and submitted migration links match; if not, stop and ask the user to run `4sight migrate up`.\n")
-	b.WriteString("\nUpdate command help when command structure, arguments, options, or flags change. Show help for syntax errors and for --help at any command depth. If help is combined with other arguments, show help and return an error. Help lists commands, options, and arguments, not usage. Semantic errors should explain the problem without help.\n")
-	b.WriteString("\nMaintain docs/USAGE.txt and docs/USAGE_<subcommand>.txt for every command recursively. Usage is brief practical guidance with examples. `usage` or `--usage` prints the corresponding usage file; extra arguments are an error and show help.\n")
-	b.WriteString("\nAfter successfully implementing the submitted change, run `4sight spec change implement agent done` to mark implementation complete.\n")
-	_, err = io.WriteString(stdout, b.String())
+	tmpl, err := template.New("implement-prompt").Funcs(template.FuncMap{
+		"endsInNewline": func(value string) bool { return strings.HasSuffix(value, "\n") },
+	}).Parse(implementPromptTemplate)
+	if err != nil {
+		return fmt.Errorf("parse implementation prompt template: %w", err)
+	}
+	var output bytes.Buffer
+	if err := tmpl.Execute(&output, data); err != nil {
+		return fmt.Errorf("render implementation prompt: %w", err)
+	}
+	_, err = io.WriteString(stdout, output.String())
 	return err
 }
 

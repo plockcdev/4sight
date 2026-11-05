@@ -51,7 +51,10 @@ Also separately list the schemas found in the `.4sight/schemas` directory
 telling the agent to read those as well, group by the db type.
 
 Then tell agent update code implementation, but do not update the schema, with
-additional instructions from the subsections below:
+additional instructions from the following subsections:
+
+Remove command implementations whose cmd.md specs no longer exist. Update
+command routing, help, and usage accordingly.
 
 ### Command Help
 

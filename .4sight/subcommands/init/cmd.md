@@ -16,9 +16,20 @@ we are in a git repo and instruct on where to run the init command. If not in a
 git repo, then give user an example of how to initialize a git repo in a target
 directory
 
+## Verify clean git workspace
+
+After confirming the current directory is the git repository root, verify the
+working tree has no staged, unstaged, or untracked changes. If it is not clean,
+abort before modifying files and tell the user to commit or stash the changes.
+
 ## .4sight directory
 
 Create target directory if missing.
+
+## .gitignore
+
+Add `.4sight/changes` to the target repository root `.gitignore` if it is not
+already present. Preserve existing entries and do not add duplicates.
 
 ### 4sight Build-time migration assets
 
@@ -82,3 +93,9 @@ if .4sight/coding.md does not exist, create it, otherwise leave alone
 
 If the workspace change is at ch-000, then init runs `4sight spec change import`
 to pick up the initialized spec files
+
+## Commit initialized files
+
+After successful initialization, stage `.4sight`, `AGENTS.md`, and `.gitignore`
+with git, then commit the staged changes. If staging or committing fails, report
+the problem and suggest how to resolve it.

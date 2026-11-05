@@ -12,78 +12,33 @@ import (
 
 var specTokenRe = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]*$`)
 
-func Import(cwd string, loc []string) error {
-	root, err := findMetadataRoot(cwd)
-	if err != nil {
-		return err
+func resolveSpecLocation(loc []string) (dirRel, name string, err error) {
+	if len(loc) == 0 {
+		return "", "", fmt.Errorf("missing spec file location")
 	}
-	return runImport(root, loc, newDoltStore(filepath.Join(root, "db")))
-}
-
-func ImportSchema(cwd, schemaRel string) error {
-	root, err := findMetadataRoot(cwd)
-	if err != nil {
-		return err
-	}
-	return runImportSchema(root, schemaRel, newDoltStore(filepath.Join(root, "db")))
-}
-
-func runImportSchema(metadataRoot, schemaRel string, st store) error {
-	name, err := resolveSchemaFileName(schemaRel)
-	if err != nil {
-		return err
-	}
-	specPath := filepath.Join(metadataRoot, "schemas", name)
-	info, err := os.Stat(specPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("schema spec %s does not exist", relFromMetadata(metadataRoot, specPath))
+	for _, part := range loc {
+		if strings.TrimSpace(part) == "" || part != strings.TrimSpace(part) {
+			return "", "", fmt.Errorf("spec file location %q is invalid", strings.Join(loc, " "))
 		}
-		return fmt.Errorf("schema spec %s: %w", relFromMetadata(metadataRoot, specPath), err)
+		if !specTokenRe.MatchString(part) {
+			return "", "", fmt.Errorf("spec file location token %q is invalid", part)
+		}
 	}
-	if info.IsDir() {
-		return fmt.Errorf("schema spec %s does not exist", relFromMetadata(metadataRoot, specPath))
+	name = loc[len(loc)-1]
+	cmdPath := loc[:len(loc)-1]
+	if len(cmdPath) == 0 {
+		return "", name, nil
 	}
-	bodyBytes, err := os.ReadFile(specPath)
-	if err != nil {
-		return fmt.Errorf("schema spec %s: %w", relFromMetadata(metadataRoot, specPath), err)
+	var parts []string
+	if cmdPath[0] == "main" {
+		parts = append(parts, "main")
+		cmdPath = cmdPath[1:]
 	}
-	body := string(bodyBytes)
-	prior, _, err := st.latestBody("schemas", name)
-	if err != nil {
-		return fmt.Errorf("lookup prior spec body: %w", err)
+	for _, seg := range cmdPath {
+		parts = append(parts, "subcommands", seg)
 	}
-	if err := st.insertSpec("schemas", name, body, unifiedDiff(prior, body)); err != nil {
-		return fmt.Errorf("insert spec body: %w", err)
-	}
-	return nil
+	return strings.Join(parts, "/"), name, nil
 }
-
-func resolveSchemaFileName(schemaRel string) (string, error) {
-	schemaRel = strings.TrimSpace(schemaRel)
-	if schemaRel == "" {
-		return "", fmt.Errorf("missing schema spec path")
-	}
-	if filepath.IsAbs(schemaRel) {
-		return "", fmt.Errorf("schema spec path must be relative to schemas dir, not %q", schemaRel)
-	}
-	clean := filepath.Clean(schemaRel)
-	if clean == "." || strings.HasPrefix(clean, "..") {
-		return "", fmt.Errorf("schema spec path must be relative to schemas dir, not %q", schemaRel)
-	}
-	if filepath.Base(clean) != clean {
-		return "", fmt.Errorf("schema spec path must be a file in the schemas dir, not %q", schemaRel)
-	}
-	if !strings.HasSuffix(clean, ".md") {
-		clean += ".md"
-	}
-	if !schemaFileRe.MatchString(clean) {
-		return "", fmt.Errorf("schema spec path token %q is invalid", clean)
-	}
-	return clean, nil
-}
-
-var schemaFileRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*\.md$`)
 
 type specDoc struct {
 	Dir  string
@@ -144,68 +99,6 @@ func writeSpecFile(metadataRoot, dirRel, name, body string) (string, error) {
 		return "", fmt.Errorf("write spec file %s: %w", relFromMetadata(metadataRoot, path), err)
 	}
 	return path, nil
-}
-
-func runImport(metadataRoot string, loc []string, st store) error {
-	dirRel, name, err := resolveSpecLocation(loc)
-	if err != nil {
-		return err
-	}
-
-	specPath := filepath.Join(metadataRoot, filepath.FromSlash(dirRel), name)
-	info, err := os.Stat(specPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("spec file %s does not exist", relFromMetadata(metadataRoot, specPath))
-		}
-		return fmt.Errorf("spec file %s: %w", relFromMetadata(metadataRoot, specPath), err)
-	}
-	if info.IsDir() {
-		return fmt.Errorf("spec file %s does not exist", relFromMetadata(metadataRoot, specPath))
-	}
-
-	bodyBytes, err := os.ReadFile(specPath)
-	if err != nil {
-		return fmt.Errorf("spec file %s: %w", relFromMetadata(metadataRoot, specPath), err)
-	}
-	body := string(bodyBytes)
-
-	prior, _, err := st.latestBody(dirRel, name)
-	if err != nil {
-		return fmt.Errorf("lookup prior spec body: %w", err)
-	}
-	if err := st.insertSpec(dirRel, name, body, unifiedDiff(prior, body)); err != nil {
-		return fmt.Errorf("insert spec body: %w", err)
-	}
-	return nil
-}
-
-func resolveSpecLocation(loc []string) (dirRel, name string, err error) {
-	if len(loc) == 0 {
-		return "", "", fmt.Errorf("missing spec file location")
-	}
-	for _, part := range loc {
-		if strings.TrimSpace(part) == "" || part != strings.TrimSpace(part) {
-			return "", "", fmt.Errorf("spec file location %q is invalid", strings.Join(loc, " "))
-		}
-		if !specTokenRe.MatchString(part) {
-			return "", "", fmt.Errorf("spec file location token %q is invalid", part)
-		}
-	}
-	name = loc[len(loc)-1]
-	cmdPath := loc[:len(loc)-1]
-	if len(cmdPath) == 0 {
-		return "", name, nil
-	}
-	var parts []string
-	if cmdPath[0] == "main" {
-		parts = append(parts, "main")
-		cmdPath = cmdPath[1:]
-	}
-	for _, seg := range cmdPath {
-		parts = append(parts, "subcommands", seg)
-	}
-	return strings.Join(parts, "/"), name, nil
 }
 
 func unifiedDiff(oldText, newText string) string {

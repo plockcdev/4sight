@@ -9,8 +9,8 @@ import (
 
 var helpTopics = map[string]bool{
 	"": true, "init": true, "migrate": true, "migrate up": true,
-	"migrate import": true, "migrate implement": true, "migrate implement prompt": true,
-	"spec": true, "spec import": true, "spec export": true, "spec sync-check": true,
+	"migrate implement": true, "migrate implement prompt": true,
+	"spec": true, "spec export": true, "spec sync-check": true,
 	"spec sync-diff": true, "spec implement": true, "spec implement prompt": true,
 	"spec change": true, "spec change import": true, "spec change list": true,
 	"spec change request": true, "spec change status": true, "spec change submit": true,
@@ -22,8 +22,8 @@ var helpTopics = map[string]bool{
 
 var usageCommands = map[string]bool{
 	"": true, "init": true, "migrate": true, "migrate up": true,
-	"migrate import": true, "migrate implement": true, "migrate implement prompt": true,
-	"spec": true, "spec import": true, "spec export": true, "spec sync-check": true,
+	"migrate implement": true, "migrate implement prompt": true,
+	"spec": true, "spec export": true, "spec sync-check": true,
 	"spec sync-diff": true, "spec implement": true, "spec implement prompt": true,
 	"spec change": true, "spec change import": true, "spec change list": true,
 	"spec change request": true, "spec change status": true, "spec change submit": true,

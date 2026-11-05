@@ -14,8 +14,6 @@ type deps struct {
 	getwd                        func() (string, error)
 	up                           func(cwd string) error
 	implementPrompt              func(cwd, schemaRel string) error
-	migrateImport                func(cwd, schemaRel string) error
-	specImport                   func(cwd string, loc []string) error
 	specExport                   func(cwd string, loc []string) error
 	specSyncCheck                func(cwd string) error
 	specSyncDiff                 func(cwd string) error
@@ -37,8 +35,6 @@ func Run(args []string) int {
 		getwd:                        os.Getwd,
 		up:                           migrate.Up,
 		implementPrompt:              migrate.ImplementPrompt,
-		migrateImport:                spec.ImportSchema,
-		specImport:                   spec.Import,
 		specExport:                   spec.Export,
 		specSyncCheck:                spec.SyncCheck,
 		specSyncDiff:                 spec.SyncDiff,
@@ -127,9 +123,6 @@ func runHelpTopic(topic []string) int {
 	case "spec":
 		printSpecHelp()
 		return 0
-	case "spec import":
-		printSpecImportHelp()
-		return 0
 	case "spec implement":
 		printSpecImplementHelp()
 		return 0
@@ -181,11 +174,8 @@ func runHelpTopic(topic []string) int {
 	case "spec change review show":
 		printSpecChangeReviewShowHelp()
 		return 0
-	case "migrate import":
-		printMigrateImportHelp()
-		return 0
 	default:
-		fmt.Fprintf(os.Stderr, "4sight: unknown help topic %q (try: migrate, migrate up, migrate import, migrate implement prompt, spec, spec import, spec export, spec sync-check, spec sync-diff, spec implement prompt, spec change, spec change import, spec change list, spec change request, spec change status)\n", strings.Join(topic, " "))
+		fmt.Fprintf(os.Stderr, "4sight: unknown help topic %q (try: migrate, migrate up, migrate implement prompt, spec, spec export, spec sync-check, spec sync-diff, spec implement prompt, spec change, spec change import, spec change list, spec change request, spec change status)\n", strings.Join(topic, " "))
 		return 1
 	}
 }
@@ -201,8 +191,6 @@ func parseMigrate(args []string, d deps) int {
 		return 0
 	case "up":
 		return parseMigrateUp(args[1:], d)
-	case "import":
-		return parseMigrateImport(args[1:], d)
 	case "implement":
 		return parseMigrateImplement(args[1:], d)
 	}
@@ -276,8 +264,6 @@ func parseSpec(args []string, d deps) int {
 	case "-h", "--help":
 		printSpecHelp()
 		return 0
-	case "import":
-		return parseSpecImport(args[1:], d)
 	case "export":
 		return parseSpecExport(args[1:], d)
 	case "sync-check":
@@ -716,68 +702,6 @@ func parseSpecSyncCheck(args []string, d deps) int {
 	return 0
 }
 
-func parseMigrateImport(args []string, d deps) int {
-	if len(args) == 1 {
-		switch args[0] {
-		case "-h", "--help":
-			printMigrateImportHelp()
-			return 0
-		}
-	}
-	for _, arg := range args {
-		if strings.HasPrefix(arg, "-") {
-			printMigrateImportHelp()
-			return 1
-		}
-	}
-	if len(args) != 1 {
-		printMigrateImportHelp()
-		fmt.Fprintln(os.Stderr, "4sight migrate import: requires exactly one schema spec path")
-		return 1
-	}
-	cwd, err := d.getwd()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "4sight migrate import:", err)
-		return 1
-	}
-	if err := d.migrateImport(cwd, args[0]); err != nil {
-		fmt.Fprintln(os.Stderr, "4sight migrate import:", err)
-		return 1
-	}
-	return 0
-}
-
-func parseSpecImport(args []string, d deps) int {
-	if len(args) == 1 {
-		switch args[0] {
-		case "-h", "--help":
-			printSpecImportHelp()
-			return 0
-		}
-	}
-	for _, arg := range args {
-		if strings.HasPrefix(arg, "-") {
-			printSpecImportHelp()
-			return 1
-		}
-	}
-	if len(args) == 0 {
-		printSpecImportHelp()
-		fmt.Fprintln(os.Stderr, "4sight spec import: requires a spec file location (command path then file name)")
-		return 1
-	}
-	cwd, err := d.getwd()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "4sight spec import:", err)
-		return 1
-	}
-	if err := d.specImport(cwd, args); err != nil {
-		fmt.Fprintln(os.Stderr, "4sight spec import:", err)
-		return 1
-	}
-	return 0
-}
-
 func parseMigrateUp(args []string, d deps) int {
 	if len(args) == 1 {
 		switch args[0] {
@@ -842,7 +766,6 @@ Apply SQL migrations so databases match the submitted schema.
 
 Commands:
   up                Apply pending migrations
-  import            Import a schema spec into bodies
   implement         Generate migration implementation prompts
 
 Options:
@@ -883,7 +806,6 @@ func printSpecHelp() {
 Import, export, and check specification bodies in the spec database.
 
 Commands:
-  import            Import a spec file into bodies
   change            Record filesystem changes and prompts as a change
   export            Write a spec body from the database to disk
   sync-check        Compare database bodies with on-disk spec files
@@ -1103,38 +1025,6 @@ export section lists "4sight spec export <command...> <file>" for each
 workspace body that differs from disk.
 
 This command takes no arguments.
-
-Options:
-  -h, --help        Show this help
-`)
-}
-
-func printMigrateImportHelp() {
-	fmt.Print(`4sight migrate import <schema>
-
-Import a schema specification file into the spec.bodies table.
-
-The schema argument is a path relative to .4sight/schemas, such as
-dolt_spec.md or dolt_spec.
-
-If the file does not exist, the command fails.
-
-Options:
-  -h, --help        Show this help
-`)
-}
-
-func printSpecImportHelp() {
-	fmt.Print(`4sight spec import <command...> <file>
-
-Import a specification file into the spec.bodies table.
-
-The location is the command/subcommand path as separate arguments,
-then the file name. For example, the cmd.md spec for "myprog foo bar":
-
-  4sight spec import myprog foo bar cmd.md
-
-If the file does not exist, the command fails.
 
 Options:
   -h, --help        Show this help
