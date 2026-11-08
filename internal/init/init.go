@@ -36,10 +36,16 @@ func run(cwd string, source fs.FS, stdout interface{ Write([]byte) (int, error) 
 	if root != abs {
 		return fmt.Errorf("run 4sight init from the git repository root %s (current directory is %s)", root, abs)
 	}
+	if err := verifyCleanGitWorkspace(root); err != nil {
+		return err
+	}
 
 	metadata := filepath.Join(root, ".4sight")
 	if err := os.MkdirAll(metadata, 0o755); err != nil {
 		return fmt.Errorf("create %s: %w", metadata, err)
+	}
+	if err := ensureGitignoreEntry(root, ".4sight/changes"); err != nil {
+		return err
 	}
 	database := filepath.Join(metadata, "db")
 	if err := os.MkdirAll(database, 0o755); err != nil {
@@ -99,8 +105,87 @@ func run(cwd string, source fs.FS, stdout interface{ Write([]byte) (int, error) 
 			return fmt.Errorf("write %s: %w", item.target, err)
 		}
 	}
+	if err := commitInitializedFiles(root); err != nil {
+		return err
+	}
 	_, err = fmt.Fprintf(stdout, "initialized 4sight in %s\n", root)
 	return err
+}
+
+func verifyCleanGitWorkspace(root string) error {
+	cmd := exec.Command("git", "status", "--porcelain", "--untracked-files=all")
+	cmd.Dir = root
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		message := strings.TrimSpace(string(output))
+		if message == "" {
+			message = err.Error()
+		}
+		return fmt.Errorf("check git working tree in %s: %s", root, message)
+	}
+	if strings.TrimSpace(string(output)) != "" {
+		return fmt.Errorf("git working tree in %s is not clean; commit or stash staged, unstaged, and untracked changes before running 4sight init", root)
+	}
+	return nil
+}
+
+func ensureGitignoreEntry(root, pattern string) error {
+	path := filepath.Join(root, ".gitignore")
+	body, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("read %s: %w", path, err)
+	}
+	for line := range strings.SplitSeq(strings.ReplaceAll(string(body), "\r\n", "\n"), "\n") {
+		entry := strings.Trim(strings.TrimSpace(line), "/")
+		if entry == pattern {
+			return nil
+		}
+	}
+	if len(body) > 0 && body[len(body)-1] != '\n' {
+		body = append(body, '\n')
+	}
+	body = append(body, pattern+"\n"...)
+	if err := os.WriteFile(path, body, 0o644); err != nil {
+		return fmt.Errorf("update %s: %w", path, err)
+	}
+	return nil
+}
+
+func commitInitializedFiles(root string) error {
+	add := exec.Command("git", "add", "--", ".4sight", "AGENTS.md", ".gitignore")
+	add.Dir = root
+	if output, err := add.CombinedOutput(); err != nil {
+		message := strings.TrimSpace(string(output))
+		if message == "" {
+			message = err.Error()
+		}
+		return fmt.Errorf("stage initialized files in %s: %s; resolve the Git error and stage .4sight, AGENTS.md, and .gitignore manually", root, message)
+	}
+
+	diff := exec.Command("git", "diff", "--cached", "--quiet")
+	diff.Dir = root
+	if output, err := diff.CombinedOutput(); err != nil {
+		if exit, ok := err.(*exec.ExitError); !ok || exit.ExitCode() != 1 {
+			message := strings.TrimSpace(string(output))
+			if message == "" {
+				message = err.Error()
+			}
+			return fmt.Errorf("check staged init changes in %s: %s", root, message)
+		}
+	} else {
+		return nil
+	}
+
+	commit := exec.Command("git", "commit", "-m", "Initialize 4sight")
+	commit.Dir = root
+	if output, err := commit.CombinedOutput(); err != nil {
+		message := strings.TrimSpace(string(output))
+		if message == "" {
+			message = err.Error()
+		}
+		return fmt.Errorf("commit initialized files in %s: %s; resolve the Git error and commit the staged initialization files manually", root, message)
+	}
+	return nil
 }
 
 type embeddedMigration struct {

@@ -10,6 +10,7 @@ import (
 type changeListEntry struct {
 	ID      string
 	Summary string
+	Marker  string
 }
 
 func ChangeList(cwd string) error {
@@ -21,6 +22,14 @@ func ChangeList(cwd string) error {
 }
 
 func runChangeList(st *doltStore, out io.Writer) error {
+	pointers, err := st.queryCSV("SELECT submitted_change_id, implemented_change_id FROM spec.current_changes WHERE singleton = 1")
+	if err != nil {
+		return fmt.Errorf("read current change pointers: %w", err)
+	}
+	if len(pointers) != 1 || len(pointers[0]) < 2 || pointers[0][0] == "" || pointers[0][1] == "" {
+		return fmt.Errorf("current change pointers are not initialized")
+	}
+	submitted, implemented := pointers[0][0], pointers[0][1]
 	rows, err := st.queryCSV("SELECT c.id, COALESCE(cr.summary, 'no summary yet') FROM spec.changes c LEFT JOIN spec.change_review cr ON cr.change_id = c.id ORDER BY c.created_at ASC, c.id ASC")
 	if err != nil {
 		return fmt.Errorf("list changes: %w", err)
@@ -34,10 +43,17 @@ func runChangeList(st *doltStore, out io.Writer) error {
 		if len(row) < 2 {
 			return fmt.Errorf("incomplete change list row")
 		}
-		entries = append(entries, changeListEntry{ID: row[0], Summary: row[1]})
+		implementedMarker, submittedMarker := " ", " "
+		if row[0] == implemented {
+			implementedMarker = "I"
+		}
+		if row[0] == submitted {
+			submittedMarker = "S"
+		}
+		entries = append(entries, changeListEntry{ID: row[0], Summary: row[1], Marker: implementedMarker + " " + submittedMarker})
 	}
 	for _, entry := range entries {
-		if _, err := fmt.Fprintf(out, "%s: %s\n", entry.ID, entry.Summary); err != nil {
+		if _, err := fmt.Fprintf(out, "%s  %s: %s\n", entry.Marker, entry.ID, entry.Summary); err != nil {
 			return err
 		}
 	}

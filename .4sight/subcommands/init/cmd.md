@@ -99,3 +99,5 @@ to pick up the initialized spec files
 After successful initialization, stage `.4sight`, `AGENTS.md`, and `.gitignore`
 with git, then commit the staged changes. If staging or committing fails, report
 the problem and suggest how to resolve it.
+
+If initialization produces no changes to stage, skip the commit and exit successfully.
