@@ -1,9 +1,18 @@
 ## 4sight spec chage review design
 
-After the user has imported design file changes (either directly or indirectly
-through a request), the agent will make a review agent prompt.
+After spec changes have been imported, the agent will make a review agent
+prompt. Request-driven spec authoring is handled by the separate `spec change
+author agent prompt` command.
 
-Agent will be instructed to perform a high level change review,
-and per file qualitative review and provide an agent response.
+The review prompt instructs the agent to perform a high-level change review and
+per-file qualitative reviews, then provide an agent response.
 
-The review is for the current "workspace" change pointer with respect to the current "submitted" change pointer while the filesystem and db agree on contents.
+The review is for the current "workspace" change pointer with respect to the
+current "submitted" change pointer while the filesystem and db agree on
+contents.
+
+The composite diff includes tracked text asset changes. Text asset files are omitted from
+the lists of workspace specs, but every changed text asset receives a file-level
+review entry. Use the inherited spec design and the schema spec for text asset,
+path, and relationship semantics. Review must
+distinguish inferred relationships from confirmed file identity.

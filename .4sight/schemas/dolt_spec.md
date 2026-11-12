@@ -19,6 +19,8 @@ for this file, its file reference must match ours
 - state: one of the kinds of "current changes", implemented, submitted, workspace
 - ieee_crc32: checksum of the body, should always be set
 - summary: 65 character or less summary of what the body text specifies
+- deleted: whether this state represents a deleted file; an empty body with
+  deleted false is a present empty file
 
 The body is a full text of the file change for its file (one body per file per
 state, which should be the primary key)
@@ -89,10 +91,28 @@ This will be initialized by migration, after which:
 ## file_changes
 
 - represent an incremental change of a referenced file
-- change: a reference for which change this file change is part of
-- file: which file this diff is calculated for
+- change: reference to the change this file change is part of
+- file: stable identity of the file this diff is calculated for
 - diff - what changed in unified diff format
+- deleted - whether this change makes the file absent; false means a present
+  file, including a present empty file
+- filepath: reference to the filepath where this file exists after this change;
+  for deletion, retain the filepath of the last existing path
+- related_file: optional source file identity for copy provenance only; copies
+  have their own file identity
+- similarity: optional line-based score for an inferred rename or copy
 - created_at: second resolution date and time
+
+File changes attach to a stable file identity, not to a path. A file identity
+persists through a rename. Its filepath reference on each file change records
+the path at that point in history; the previous file change on the ancestry
+provides the old path. Deleting a file releases its current path; creating a
+file at a deleted path creates a new identity and reuses the filepath row.
+Current paths must be unique among live files. Rename similarity is recorded
+without a related-file reference because the same file identity continues.
+Copy similarity is recorded with the source in related_file. Similarity is
+stored for selected rename/copy relationships; ambiguous copy candidates are
+reported without storing a selected source.
 
 There can be only one file change per file per change, but a change can have
 multiple file changes by pointing to different files
@@ -129,21 +149,40 @@ in the db should be handled by app.
 
 ## files
 
-Files on disk, which for example could be part of a code or schema spec
+Files have stable identities independent of paths.
 
-- dir: reference to which dir this file is in
-- name: no whitespace file name with combination of lowercase letters,
-hyphens, underscores, numbers, and '.', but not starting with a hyphen or period
+- current_filepath: reference to the current filepath; null when the file is
+  deleted
 
-dir and name combination must be unique
+The current_filepath reference is the path at the workspace pointer, is
+unique among live files, and is null when deleted at the workspace pointer.
+Resolve paths at submitted or implemented pointers from file_changes history.
+Migrations must preserve existing file identities and map existing paths to
+filepaths entries.
+
+## filepaths
+
+An append-only registry of unique file paths represented by a directory and
+filename. A filepath row is never updated or deleted; a path can be reused by a
+new file identity after deletion.
+
+- dir: reference to the directory containing the file
+- name: filename within that directory
+
+The `dir` and `name` combination must be unique. Names must be a single
+non-empty path segment with no whitespace or separators, use ASCII letters in
+either case, digits, '.', '_', and '-', and not equal `.` or `..`.
 
 ## dirs
 
-Filesystem dir path relative to .4sight, could for example be part of a change
-or a spec
+Directories have unique project-relative paths. The empty path represents the
+project root. Specs are under `.4sight/`; tracked text assets are under their
+owning command or subcommand source directory. Nested text asset paths are
+represented by directory rows for each path. Binary assets are not represented
+in the spec database.
 
-- id
-- path: unique directory path, no whitespace with combination of lowercase letters,
-hyphens, numbers, '/', and '.' if non-empty, must start with letter or number,
-can't end with '/' or have two '/' in a row empty dir is allowed (root of
-.4sight)
+- path: unique directory path
+
+Paths must contain no whitespace, use ASCII letters in either case, digits,
+'/', '.', '_', and '-', contain no repeated '/' separators, and have no empty,
+'.', or '..' segments. The `.4sight` directory is a valid leading segment.

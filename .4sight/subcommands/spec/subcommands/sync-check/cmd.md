@@ -1,9 +1,9 @@
 # 4sight spec sync-check
 
-Checks if the collection of workspace bodies in the database matches the on disk
-spec files in both directions (check for missing bodies),
-but compare without considering whitespace at end of lines and empty lines at the
-end of the document (as we clear those on import)
+Checks if workspace file records match the on-disk specs and text assets in both
+directions, reporting missing and extra files. Use the inherited spec design
+for discovery and comparison rules, and the schema spec for file presence and
+deletion semantics.
 
 Output two sections, one for user to import, and other for user to export bodies
 that are not matching.  The import section should call out any new files that would

@@ -2,12 +2,12 @@
 
 Advance the submitted change pointer to the current workspace change.
 
-Before changing any database state, verify that supported spec files on disk
-match the workspace bodies, using the same file discovery and trailing
-whitespace normalization as `spec change import` and `spec sync-check`. This
-includes code and database schema specs. If any file is out of sync, report each
-path and the appropriate import or export remediation, then stop without
-changing the submitted pointer or submitted bodies.
+Before changing any database state, verify that supported spec files and tracked
+text assets on disk match the workspace bodies, using discovery and comparison rules
+from the inherited spec design and file-state semantics from the schema spec
+for 4sight's spec database. If any file is out of sync, report each path and
+the appropriate import or export remediation, then stop without changing the
+submitted pointer or submitted bodies.
 
 If the workspace and submitted pointers already match, report that there is no
 change to submit and exit successfully.

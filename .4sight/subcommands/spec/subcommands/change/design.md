@@ -9,3 +9,8 @@ The submitted pointer tracks the latest spec change accepted for implementation.
 
 The implemented pointer tracks the latest submitted change whose implementation
 is complete.
+
+File identity, path history, deletion, and copy provenance follow the schema
+spec for 4sight's spec database; discovery and rename/copy detection follow the
+inherited spec design.
+

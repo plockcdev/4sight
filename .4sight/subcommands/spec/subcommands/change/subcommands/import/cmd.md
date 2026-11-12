@@ -2,24 +2,21 @@
 
 Overview: persist filesystem changes as a change
 
-When needed, make a new change a child of the workspace change and update current "workspace" change pointer.  The prompt should be empty,
-as a signal that it is an import change.
-If there turns out not to be any file changes (see below), print to
-stderr no changes found, and exit cleanly
+If differences are found, make a new change a child of the current workspace
+change and update the current "workspace" change pointer to it. The prompt
+should be empty, as a signal that it is an import change. If no differences are
+found, leave the workspace pointer unchanged, print "no changes found" to
+stderr, and exit cleanly.
 
-Create and fill file_changes in db attached to the change for all deltas in spec
-between db and workspace by scanning all command dirs and schema dir for all supported spec filenames
-and for all db "workspace" bodies and for each:
+Create and fill file_changes for all deltas between the on-disk supported spec
+files and text assets and the workspace database state. Follow the discovery,
+comparison, and rename/copy rules in the inherited spec design, and the file,
+filepath, and deletion model in the schema spec.
 
-- if the "workspace" body does not exist, treat as new spec
-- if the workspace body does exist, but local file does not, the spec diff is removing
-  the entire contents of the spec, leaving an empty body
-- if db and file differs, the file is the updated version
-- create the "workspace" body for the file, without summary, and remove
-  the prior "workspace" body if it existed
-
-Note that anytime handling the filesystem file (comparing, diffing, writing to body),
-ignore trailing whitespace and empty lines at the end of the file.
+For every detected difference, write the corresponding file change and
+workspace body state according to the schema, replacing any prior workspace
+body for that file. Preserve content according to the inherited comparison
+rules.
 
 Print this yaml:
 

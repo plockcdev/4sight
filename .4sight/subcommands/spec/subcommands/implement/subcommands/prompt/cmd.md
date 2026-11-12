@@ -31,6 +31,9 @@ Tell agent to read:
 - all the design spec for top level and all subcommands
 - all the schemas in `.4sight/schemas`
 
+Do not list text assets in the code spec list. Instruct the agent to inspect text asset
+changes in the composite diff and read relevant text asset files from disk.
+
 ## Check Spec Problems
 
 The code and schema specifications work together.
@@ -46,6 +49,9 @@ line numbers will be outdated.
 
 Tell agent the following code spec files inform the app behavior, then list the
 spec files that exist
+
+Text assets are omitted from that list. The composite diff may include text asset
+changes, and every changed text asset receives a file-level review entry.
 
 Also separately list the schemas found in the `.4sight/schemas` directory
 telling the agent to read those as well, group by the db type.
