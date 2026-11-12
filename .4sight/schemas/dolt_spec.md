@@ -22,6 +22,9 @@ for this file, its file reference must match ours
 - deleted: whether this state represents a deleted file; an empty body with
   deleted false is a present empty file
 
+The body's `deleted` value must match the `deleted` value of its referenced
+file change.
+
 The body is a full text of the file change for its file (one body per file per
 state, which should be the primary key)
 

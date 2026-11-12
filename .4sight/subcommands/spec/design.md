@@ -26,10 +26,12 @@ including line endings, trailing whitespace, and final newlines.
 File absence on disk means deletion; a present empty file is live. The schema
 spec for 4sight's spec database defines how this state is stored.
 
-Text assets are discovered recursively under command and subcommand `assets`
-directories, preserving nested paths. Text asset symlinks are errors. Tracked
-text assets must be valid UTF-8 with no NUL bytes. Ignore binary assets during
-discovery, import, export, and sync checks.
+Discover files recursively under command and subcommand `assets` directories,
+preserving nested paths. Classify a file as a text asset only if its bytes are
+valid UTF-8, contain no NUL, and contain no Unicode control characters except
+TAB (U+0009), LF (U+000A), and CR (U+000D). Text asset symlinks are errors.
+Treat all other asset files as binary and ignore them during discovery, import,
+export, and sync checks.
 The project-relative path model and file identity rules follow that schema
 spec. Schema specs are located and named using the conventions above.
 
