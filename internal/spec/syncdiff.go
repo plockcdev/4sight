@@ -27,9 +27,9 @@ func runSyncDiff(metadataRoot string, st store, stdout io.Writer) error {
 		return err
 	}
 
-	dbBodies := make(map[specKey]string)
+	dbBodies := make(map[specKey]specDoc)
 	for _, doc := range docs {
-		dbBodies[specKey{dir: doc.Dir, name: doc.Name}] = doc.Body
+		dbBodies[specKey{dir: doc.Dir, name: doc.Name}] = doc
 	}
 
 	keys := make(map[specKey]bool)
@@ -53,13 +53,35 @@ func runSyncDiff(metadataRoot string, st store, stdout io.Writer) error {
 
 	var diffs []string
 	for _, key := range ordered {
-		dbBody := dbBodies[key]
-		diskBody := disk[key]
-		if dbBody == diskBody {
+		dbDoc, inDB := dbBodies[key]
+		diskBody, onDisk := disk[key]
+		if inDB && dbDoc.Deleted && !onDisk {
+			continue
+		}
+		dbBody := ""
+		if inDB && !dbDoc.Deleted {
+			dbBody = dbDoc.Body
+		}
+		if inDB == onDisk && (!inDB || normalizeTrackedBody(key.dir, key.name, dbBody) == normalizeTrackedBody(key.dir, key.name, diskBody)) {
 			continue
 		}
 		path := specDisplayPath(key)
-		diff := unifiedDiffPaths(path, path, dbBody, diskBody)
+		oldPath, newPath := path, path
+		if !inDB {
+			oldPath = "/dev/null"
+		}
+		if !onDisk || (inDB && dbDoc.Deleted) {
+			newPath = "/dev/null"
+		}
+		oldText, newText := dbBody, diskBody
+		if inDB && dbDoc.Deleted {
+			oldText, newText = diskBody, ""
+		} else if !inDB {
+			oldText = ""
+		} else if !onDisk {
+			newText = ""
+		}
+		diff := unifiedDiffPaths(oldPath, newPath, oldText, newText)
 		if diff != "" {
 			diffs = append(diffs, diff)
 		}

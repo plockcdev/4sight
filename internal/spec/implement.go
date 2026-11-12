@@ -26,6 +26,8 @@ Group the schemas by database type:
 {{.DBType}}:
 {{range .Paths}}- {{.}}
 {{end}}{{end}}
+{{if .CompositeDiffPath}}Read the composite diff at {{.CompositeDiffPath}} to inspect path changes, deletions, text asset changes, and rename/copy relationship metadata. Text assets are omitted from the spec list; read relevant text asset files from disk.
+{{end}}
 Review the application code specification and update the code to match the spec.
 Do not update the schema.
 If the schema needs a spec change or a migration to be compatible with the code spec, stop and tell the user the gap (schema spec or migration, and what kinds of changes are needed).
@@ -52,13 +54,14 @@ type promptSchemaGroup struct {
 }
 
 type implementPromptData struct {
-	CodeSpecs        []promptCodeSpec
-	RemovedCodeSpecs []string
-	SchemaGroups     []promptSchemaGroup
-	MigrateUpCommand string
-	UsageCommand     string
-	UsageFlag        string
-	CompleteCommand  string
+	CodeSpecs         []promptCodeSpec
+	RemovedCodeSpecs  []string
+	SchemaGroups      []promptSchemaGroup
+	CompositeDiffPath string
+	MigrateUpCommand  string
+	UsageCommand      string
+	UsageFlag         string
+	CompleteCommand   string
 }
 
 func ImplementPrompt(cwd string) error {
@@ -73,6 +76,12 @@ func runImplementPrompt(metadataRoot string, st store, stdout io.Writer) error {
 	docs, err := st.listLatestBodies()
 	if err != nil {
 		return fmt.Errorf("list spec bodies: %w", err)
+	}
+	data := implementPromptData{
+		MigrateUpCommand: "`4sight migrate up`",
+		UsageCommand:     "`usage`",
+		UsageFlag:        "`--usage`",
+		CompleteCommand:  "`4sight spec change implement agent done`",
 	}
 	if state, ok := st.(interface {
 		changePointers() (string, string, error)
@@ -109,17 +118,29 @@ func runImplementPrompt(metadataRoot string, st store, stdout io.Writer) error {
 		if err := verifySchemaMigrations(metadataRoot); err != nil {
 			return err
 		}
-	}
-	data := implementPromptData{
-		MigrateUpCommand: "`4sight migrate up`",
-		UsageCommand:     "`usage`",
-		UsageFlag:        "`--usage`",
-		CompleteCommand:  "`4sight spec change implement agent done`",
+		if diffStore, ok := st.(interface {
+			compositeDiff(from, to string) (string, error)
+		}); ok {
+			diff, err := diffStore.compositeDiff(implemented, submitted)
+			if err != nil {
+				return fmt.Errorf("render submitted composite diff: %w", err)
+			}
+			rel := filepath.Join("changes", submitted, "unified.diff")
+			path := filepath.Join(metadataRoot, rel)
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				return fmt.Errorf("create composite diff directory: %w", err)
+			}
+			if err := os.WriteFile(path, []byte(diff), 0o644); err != nil {
+				return fmt.Errorf("write submitted composite diff: %w", err)
+			}
+			dataPath := filepath.ToSlash(filepath.Join(".4sight", rel))
+			data.CompositeDiffPath = dataPath
+		}
 	}
 	var removedCodeDocs []specDoc
 	for _, doc := range docs {
 		if isCodeSpecName(doc.Name) {
-			if doc.Body == "" {
+			if doc.Deleted {
 				removedCodeDocs = append(removedCodeDocs, doc)
 				continue
 			}
@@ -173,9 +194,9 @@ func verifyImplementSpecsInSync(root string, bodies []specDoc) error {
 	if err != nil {
 		return err
 	}
-	db := make(map[specKey]string, len(bodies))
+	db := make(map[specKey]specDoc, len(bodies))
 	for _, doc := range bodies {
-		db[specKey{dir: doc.Dir, name: doc.Name}] = doc.Body
+		db[specKey{dir: doc.Dir, name: doc.Name}] = doc
 	}
 	keys := make(map[specKey]bool, len(disk)+len(db))
 	for key := range disk {
@@ -188,7 +209,14 @@ func verifyImplementSpecsInSync(root string, bodies []specDoc) error {
 	for key := range keys {
 		local, onDisk := disk[key]
 		cached, inDB := db[key]
-		if normalizeSpecBody(local) == normalizeSpecBody(cached) {
+		if inDB {
+			if cached.Deleted && !onDisk {
+				continue
+			}
+			if !cached.Deleted && onDisk && normalizeTrackedBody(key.dir, key.name, local) == normalizeTrackedBody(key.dir, key.name, cached.Body) {
+				continue
+			}
+		} else if !onDisk {
 			continue
 		}
 		path := specRelPath(key.dir, key.name)

@@ -76,7 +76,7 @@ func runChangeReviewShow(st *doltStore, changeID string, out io.Writer) error {
 	if len(reviews[0]) < 6 {
 		return fmt.Errorf("incomplete review data for change %s", changeID)
 	}
-	rows, err := st.queryCSV("SELECT d.path,f.name,r.why,r.summary,r.description,r.details,r.body_summary FROM spec.file_change_reviews r JOIN spec.change_review cr ON cr.id=r.change_review_id JOIN spec.file_changes fc ON fc.id=r.file_change_id JOIN spec.files f ON f.id=fc.file_id JOIN spec.dirs d ON d.id=f.dir_id WHERE cr.change_id=" + sqlString(changeID))
+	rows, err := st.queryCSV("SELECT d.path,p.name,r.why,r.summary,r.description,r.details,r.body_summary FROM spec.file_change_reviews r JOIN spec.change_review cr ON cr.id=r.change_review_id JOIN spec.file_changes fc ON fc.id=r.file_change_id JOIN spec.filepaths p ON p.id=fc.filepath_id JOIN spec.dirs d ON d.id=p.dir_id WHERE cr.change_id=" + sqlString(changeID))
 	if err != nil {
 		return fmt.Errorf("look up file reviews for change %s: %w", changeID, err)
 	}
@@ -169,6 +169,10 @@ func runChangeReviewPrompt(root string, st *doltStore, out io.Writer) error {
 		_, err = fmt.Fprintf(out, "%sWorkspace specs are out of sync:\n%s\nImport spec changes or overwrite the affected local files from the database, then retry.\n", meta, strings.Join(bad, "\n"))
 		return err
 	}
+	if state.Prompt != "" {
+		_, err = fmt.Fprintf(out, "%sRun `4sight spec change author agent prompt` to author the requested spec changes, then import them before reviewing.\n", meta)
+		return err
+	}
 	unreviewedPaths, err := st.unreviewedPaths(state.Submitted, state.Workspace)
 	if err != nil {
 		return err
@@ -183,6 +187,10 @@ func runChangeReviewPrompt(root string, st *doltStore, out io.Writer) error {
 	}
 	for i := range paths {
 		paths[i] = ".4sight/" + paths[i]
+	}
+	relationships, err := st.relationshipDetails(state.Submitted, state.Workspace)
+	if err != nil {
+		return err
 	}
 	if err := os.MkdirAll(filepath.Join(root, "changes", state.Workspace), 0755); err != nil {
 		return err
@@ -201,7 +209,7 @@ func runChangeReviewPrompt(root string, st *doltStore, out io.Writer) error {
 	}
 	var workspaceDBSpecs, workspaceCodeSpecs []string
 	for _, d := range bodies {
-		if normalizeSpecBody(d.Body) == "" {
+		if d.Deleted || isTextAssetDir(d.Dir) {
 			continue
 		}
 		path := specRelPath(d.Dir, d.Name)
@@ -232,7 +240,6 @@ func runChangeReviewPrompt(root string, st *doltStore, out io.Writer) error {
 	projectRoot := filepath.Dir(root)
 	var b strings.Builder
 	b.WriteString("Review the current unsubmitted specification changes for quality and consistency.\n\n")
-	b.WriteString(meta)
 	b.WriteString("\nCurrent Workspace DB Specs\n")
 	for _, p := range workspaceDBSpecs {
 		fmt.Fprintf(&b, "- %s\n", p)
@@ -275,13 +282,14 @@ func runChangeReviewPrompt(root string, st *doltStore, out io.Writer) error {
 	for _, p := range paths {
 		fmt.Fprintf(&b, "- %s\n", p)
 	}
+	if len(relationships) > 0 {
+		b.WriteString("\nInferred file relationships (review as suggestions, not confirmed identity):\n")
+		for _, relationship := range relationships {
+			fmt.Fprintf(&b, "- %s\n", relationship)
+		}
+	}
 	b.WriteString("\nSubmit a qualitative review of every specification change after the submitted pointer through the workspace pointer, including earlier unsubmitted changes. The overall why, summary, description, details, and review must cover this full range, not just the latest change. Include one file_reviews entry for every file changed in this range. Send one JSON object to `4sight spec change review agent response` on stdin. Each file entry needs path, why, summary (max 65 characters), description, details, and body_summary (max 65 characters). Include overall why, summary (max 65 characters), description, details, review, and ready boolean. JSON shape:\n")
 	b.WriteString("```json\n{\"why\":\"...\",\"summary\":\"...\",\"description\":\"...\",\"details\":\"...\",\"review\":\"...\",\"ready\":true,\"file_reviews\":[{\"path\":\".4sight/subcommands/example/cmd.md\",\"why\":\"...\",\"summary\":\"...\",\"description\":\"...\",\"details\":\"...\",\"body_summary\":\"...\"}]}\n```\n")
-	if state.Prompt != "" {
-		b.WriteString("\n---\nUser request prompt (make any resulting changes to specs on disk, creating command directories or spec files as needed):\n")
-		b.WriteString(state.Prompt)
-		b.WriteString("\n\nIf you changed any specs because of this request, run `4sight spec change import` to record them, then rerun `4sight spec change review agent prompt` and follow the refreshed instructions before reviewing. If no spec changed, tell the user no review is needed for the prompt because it caused no spec changes, then stop.\n")
-	}
 	_, err = io.WriteString(out, b.String())
 	return err
 }
@@ -522,7 +530,9 @@ func (s *doltStore) workspaceSyncProblems(root string) ([]string, error) {
 	}
 	db := map[specKey]string{}
 	for _, d := range docs {
-		db[specKey{d.Dir, d.Name}] = normalizeSpecBody(d.Body)
+		if !d.Deleted {
+			db[specKey{d.Dir, d.Name}] = d.Body
+		}
 	}
 	keys := map[specKey]bool{}
 	for k := range disk {
@@ -539,10 +549,11 @@ func (s *doltStore) workspaceSyncProblems(root string) ([]string, error) {
 		}
 		diskText := ""
 		if onDisk {
-			diskText = normalizeSpecBody(body)
+			diskText = normalizeTrackedBody(k.dir, k.name, body)
 		}
-		dbText := db[k]
-		if dbText == diskText {
+		dbText := normalizeTrackedBody(k.dir, k.name, db[k])
+		_, inDB := db[k]
+		if inDB == onDisk && (!inDB || dbText == diskText) {
 			continue
 		}
 		plus, minus := lineChangeCounts(dbText, diskText)
@@ -553,7 +564,7 @@ func (s *doltStore) workspaceSyncProblems(root string) ([]string, error) {
 }
 
 func (s *doltStore) unreviewedPaths(submitted, workspace string) ([]string, error) {
-	rows, err := s.queryCSV("SELECT d.path,f.name FROM spec.file_changes fc JOIN spec.files f ON f.id=fc.file_id JOIN spec.dirs d ON d.id=f.dir_id JOIN spec.changes_closure a ON a.child_id=fc.change_id AND a.parent_id=" + sqlString(submitted) + " JOIN spec.changes_closure w ON w.child_id=" + sqlString(workspace) + " AND w.parent_id=fc.change_id LEFT JOIN spec.file_change_reviews r ON r.file_change_id=fc.id WHERE a.depth>0 AND r.id IS NULL AND NOT EXISTS (SELECT 1 FROM spec.file_changes newer JOIN spec.changes_closure na ON na.child_id=newer.change_id AND na.parent_id=" + sqlString(submitted) + " JOIN spec.changes_closure nw ON nw.child_id=" + sqlString(workspace) + " AND nw.parent_id=newer.change_id WHERE newer.file_id=fc.file_id AND na.depth>0 AND nw.depth<w.depth) GROUP BY d.path,f.name ORDER BY d.path,f.name")
+	rows, err := s.queryCSV("SELECT d.path,p.name FROM spec.file_changes fc JOIN spec.filepaths p ON p.id=fc.filepath_id JOIN spec.dirs d ON d.id=p.dir_id JOIN spec.changes_closure a ON a.child_id=fc.change_id AND a.parent_id=" + sqlString(submitted) + " JOIN spec.changes_closure w ON w.child_id=" + sqlString(workspace) + " AND w.parent_id=fc.change_id LEFT JOIN spec.file_change_reviews r ON r.file_change_id=fc.id WHERE a.depth>0 AND r.id IS NULL AND NOT EXISTS (SELECT 1 FROM spec.file_changes newer JOIN spec.changes_closure na ON na.child_id=newer.change_id AND na.parent_id=" + sqlString(submitted) + " JOIN spec.changes_closure nw ON nw.child_id=" + sqlString(workspace) + " AND nw.parent_id=newer.change_id WHERE newer.file_id=fc.file_id AND na.depth>0 AND nw.depth<w.depth) GROUP BY d.path,p.name ORDER BY d.path,p.name")
 	if err != nil {
 		return nil, err
 	}
@@ -565,7 +576,7 @@ func (s *doltStore) unreviewedPaths(submitted, workspace string) ([]string, erro
 }
 
 func (s *doltStore) changedPaths(submitted, workspace string) ([]string, error) {
-	rows, err := s.queryCSV("SELECT d.path,f.name FROM spec.file_changes fc JOIN spec.files f ON f.id=fc.file_id JOIN spec.dirs d ON d.id=f.dir_id JOIN spec.changes_closure a ON a.child_id=fc.change_id AND a.parent_id=" + sqlString(submitted) + " JOIN spec.changes_closure w ON w.child_id=" + sqlString(workspace) + " AND w.parent_id=fc.change_id WHERE a.depth>0 AND NOT EXISTS (SELECT 1 FROM spec.file_changes newer JOIN spec.changes_closure na ON na.child_id=newer.change_id AND na.parent_id=" + sqlString(submitted) + " JOIN spec.changes_closure nw ON nw.child_id=" + sqlString(workspace) + " AND nw.parent_id=newer.change_id WHERE newer.file_id=fc.file_id AND na.depth>0 AND nw.depth<w.depth) GROUP BY d.path,f.name ORDER BY d.path,f.name")
+	rows, err := s.queryCSV("SELECT d.path,p.name FROM spec.file_changes fc JOIN spec.filepaths p ON p.id=fc.filepath_id JOIN spec.dirs d ON d.id=p.dir_id JOIN spec.changes_closure a ON a.child_id=fc.change_id AND a.parent_id=" + sqlString(submitted) + " JOIN spec.changes_closure w ON w.child_id=" + sqlString(workspace) + " AND w.parent_id=fc.change_id WHERE a.depth>0 AND NOT EXISTS (SELECT 1 FROM spec.file_changes newer JOIN spec.changes_closure na ON na.child_id=newer.change_id AND na.parent_id=" + sqlString(submitted) + " JOIN spec.changes_closure nw ON nw.child_id=" + sqlString(workspace) + " AND nw.parent_id=newer.change_id WHERE newer.file_id=fc.file_id AND na.depth>0 AND nw.depth<w.depth) GROUP BY d.path,p.name ORDER BY d.path,p.name")
 	if err != nil {
 		return nil, err
 	}
@@ -578,14 +589,36 @@ func (s *doltStore) changedPaths(submitted, workspace string) ([]string, error) 
 	return paths, nil
 }
 
+func (s *doltStore) relationshipDetails(submitted, workspace string) ([]string, error) {
+	query := "SELECT d.path,p.name,COALESCE(sd.path,''),COALESCE(sp.name,''),fc.related_file_id,fc.similarity FROM spec.file_changes fc JOIN spec.filepaths p ON p.id=fc.filepath_id JOIN spec.dirs d ON d.id=p.dir_id JOIN spec.changes_closure a ON a.child_id=fc.change_id AND a.parent_id=" + sqlString(submitted) + " JOIN spec.changes_closure w ON w.child_id=" + sqlString(workspace) + " AND w.parent_id=fc.change_id LEFT JOIN spec.files sf ON sf.id=fc.related_file_id LEFT JOIN spec.filepaths sp ON sp.id=sf.current_filepath_id LEFT JOIN spec.dirs sd ON sd.id=sp.dir_id WHERE a.depth>0 AND fc.similarity IS NOT NULL AND NOT EXISTS (SELECT 1 FROM spec.file_changes newer JOIN spec.changes_closure na ON na.child_id=newer.change_id AND na.parent_id=" + sqlString(submitted) + " JOIN spec.changes_closure nw ON nw.child_id=" + sqlString(workspace) + " AND nw.parent_id=newer.change_id WHERE newer.file_id=fc.file_id AND na.depth>0 AND nw.depth<w.depth) ORDER BY d.path,p.name"
+	rows, err := s.queryCSV(query)
+	if err != nil {
+		return nil, err
+	}
+	var details []string
+	for _, row := range rows {
+		if len(row) < 6 {
+			continue
+		}
+		path := specRelPath(row[0], row[1])
+		if row[4] == "" {
+			details = append(details, fmt.Sprintf("possible rename .4sight/%s (similarity %s)", path, row[5]))
+		} else {
+			source := specRelPath(row[2], row[3])
+			details = append(details, fmt.Sprintf("possible copy .4sight/%s from .4sight/%s (similarity %s)", path, source, row[5]))
+		}
+	}
+	return details, nil
+}
+
 func (s *doltStore) removedSpecPaths() ([]specKey, error) {
-	rows, err := s.queryCSV("SELECT d.path,f.name,COALESCE(bs.body,''),COALESCE(bw.body,'') FROM spec.files f JOIN spec.dirs d ON d.id=f.dir_id LEFT JOIN spec.bodies bs ON bs.file_id=f.id AND bs.state='submitted' LEFT JOIN spec.bodies bw ON bw.file_id=f.id AND bw.state='workspace' ORDER BY d.path,f.name")
+	rows, err := s.queryCSV("SELECT ds.path,ps.name,COALESCE(bs.deleted,0),COALESCE(bw.deleted,0) FROM spec.files f LEFT JOIN spec.bodies bs ON bs.file_id=f.id AND bs.state='submitted' LEFT JOIN spec.file_changes fcs ON fcs.id=bs.file_change_id LEFT JOIN spec.filepaths ps ON ps.id=fcs.filepath_id LEFT JOIN spec.dirs ds ON ds.id=ps.dir_id LEFT JOIN spec.bodies bw ON bw.file_id=f.id AND bw.state='workspace' ORDER BY ds.path,ps.name")
 	if err != nil {
 		return nil, err
 	}
 	paths := make([]specKey, 0, len(rows))
 	for _, row := range rows {
-		if len(row) < 4 || normalizeSpecBody(row[2]) == "" || normalizeSpecBody(row[3]) != "" {
+		if len(row) < 4 || row[2] == "1" || row[3] != "1" || row[0] == "" || row[1] == "" || isTextAssetDir(row[0]) {
 			continue
 		}
 		paths = append(paths, specKey{dir: row[0], name: row[1]})
@@ -594,21 +627,54 @@ func (s *doltStore) removedSpecPaths() ([]specKey, error) {
 }
 
 func (s *doltStore) compositeDiff(submitted, workspace string) (string, error) {
-	rows, err := s.queryCSV("SELECT d.path,f.name,COALESCE(MAX(CASE WHEN b.state='submitted' THEN b.body ELSE NULL END),''),COALESCE(MAX(CASE WHEN b.state='workspace' THEN b.body ELSE NULL END),'') FROM spec.files f JOIN spec.dirs d ON d.id=f.dir_id JOIN spec.bodies b ON b.file_id=f.id AND b.state IN ('submitted','workspace') GROUP BY d.path,f.name ORDER BY d.path,f.name")
+	fromState, err := s.bodyStateForChange(submitted)
+	if err != nil {
+		return "", err
+	}
+	toState, err := s.bodyStateForChange(workspace)
+	if err != nil {
+		return "", err
+	}
+	rows, err := s.queryCSV("SELECT COALESCE(ds.path,''),COALESCE(ps.name,''),COALESCE(dw.path,''),COALESCE(pw.name,''),COALESCE(bs.body,''),COALESCE(bw.body,''),COALESCE(bs.deleted,0),COALESCE(bw.deleted,0),bs.file_id,bw.file_id FROM spec.files f LEFT JOIN spec.bodies bs ON bs.file_id=f.id AND bs.state=" + sqlString(fromState) + " LEFT JOIN spec.file_changes fcs ON fcs.id=bs.file_change_id LEFT JOIN spec.filepaths ps ON ps.id=fcs.filepath_id LEFT JOIN spec.dirs ds ON ds.id=ps.dir_id LEFT JOIN spec.bodies bw ON bw.file_id=f.id AND bw.state=" + sqlString(toState) + " LEFT JOIN spec.file_changes fcw ON fcw.id=bw.file_change_id LEFT JOIN spec.filepaths pw ON pw.id=fcw.filepath_id LEFT JOIN spec.dirs dw ON dw.id=pw.dir_id WHERE bs.file_id IS NOT NULL OR bw.file_id IS NOT NULL ORDER BY ds.path,ps.name,dw.path,pw.name")
 	if err != nil {
 		return "", err
 	}
 	var out strings.Builder
 	for _, r := range rows {
-		if len(r) < 4 {
+		if len(r) < 10 {
 			continue
 		}
-		old, new := r[2], r[3]
-		if old == new {
+		oldPath, newPath := specRelPath(r[0], r[1]), specRelPath(r[2], r[3])
+		old, new := r[4], r[5]
+		if r[6] == "1" {
+			old = ""
+		}
+		if r[7] == "1" {
+			new = ""
+		}
+		if old == new && oldPath == newPath && r[6] == r[7] {
 			continue
 		}
-		p := ".4sight/" + specRelPath(r[0], r[1])
-		diff := unifiedDiffPaths(p, p, old, new)
+		if oldPath == "" || oldPath == "." {
+			oldPath = newPath
+		}
+		if newPath == "" || newPath == "." {
+			newPath = oldPath
+		}
+		oldDiffPath, newDiffPath := ".4sight/"+oldPath, ".4sight/"+newPath
+		if r[6] == "1" {
+			oldDiffPath = "/dev/null"
+		}
+		if r[7] == "1" {
+			newDiffPath = "/dev/null"
+		}
+		if r[8] == "" {
+			oldDiffPath = "/dev/null"
+		}
+		if r[9] == "" {
+			newDiffPath = "/dev/null"
+		}
+		diff := unifiedDiffPaths(oldDiffPath, newDiffPath, old, new)
 		if diff != "" {
 			if out.Len() > 0 {
 				out.WriteByte('\n')
@@ -617,6 +683,26 @@ func (s *doltStore) compositeDiff(submitted, workspace string) (string, error) {
 		}
 	}
 	return out.String(), nil
+}
+
+func (s *doltStore) bodyStateForChange(changeID string) (string, error) {
+	rows, err := s.queryCSV("SELECT implemented_change_id,submitted_change_id,workspace_change_id FROM spec.current_changes WHERE singleton=1")
+	if err != nil {
+		return "", err
+	}
+	if len(rows) != 1 || len(rows[0]) < 3 {
+		return "", fmt.Errorf("current change pointers are not initialized")
+	}
+	if changeID == rows[0][2] {
+		return "workspace", nil
+	}
+	if changeID == rows[0][1] {
+		return "submitted", nil
+	}
+	if changeID == rows[0][0] {
+		return "implemented", nil
+	}
+	return "", fmt.Errorf("change %s is not a current pointer", changeID)
 }
 
 type resolvedReviewFile struct {
@@ -631,7 +717,7 @@ func (s *doltStore) resolveReviewFile(state reviewState, f reviewFile) (resolved
 	if err != nil {
 		return resolvedReviewFile{}, err
 	}
-	rows, err := s.queryCSV("SELECT fc.id,b.file_id FROM spec.dirs d JOIN spec.files x ON x.dir_id=d.id JOIN spec.file_changes fc ON fc.file_id=x.id JOIN spec.changes_closure a ON a.child_id=fc.change_id AND a.parent_id=" + sqlString(state.Submitted) + " JOIN spec.changes_closure w ON w.child_id=" + sqlString(state.Workspace) + " AND w.parent_id=fc.change_id JOIN spec.bodies b ON b.file_id=x.id AND b.state='workspace' WHERE d.path=" + sqlString(dir) + " AND x.name=" + sqlString(name) + " AND a.depth>0 AND NOT EXISTS (SELECT 1 FROM spec.file_changes newer JOIN spec.changes_closure na ON na.child_id=newer.change_id AND na.parent_id=" + sqlString(state.Submitted) + " JOIN spec.changes_closure nw ON nw.child_id=" + sqlString(state.Workspace) + " AND nw.parent_id=newer.change_id WHERE newer.file_id=fc.file_id AND na.depth>0 AND nw.depth<w.depth) ORDER BY w.depth ASC LIMIT 1")
+	rows, err := s.queryCSV("SELECT fc.id,b.file_id FROM spec.filepaths p JOIN spec.dirs d ON d.id=p.dir_id JOIN spec.file_changes fc ON fc.filepath_id=p.id JOIN spec.changes_closure a ON a.child_id=fc.change_id AND a.parent_id=" + sqlString(state.Submitted) + " JOIN spec.changes_closure w ON w.child_id=" + sqlString(state.Workspace) + " AND w.parent_id=fc.change_id JOIN spec.bodies b ON b.file_id=fc.file_id AND b.state='workspace' WHERE d.path=" + sqlString(dir) + " AND p.name=" + sqlString(name) + " AND a.depth>0 AND NOT EXISTS (SELECT 1 FROM spec.file_changes newer JOIN spec.changes_closure na ON na.child_id=newer.change_id AND na.parent_id=" + sqlString(state.Submitted) + " JOIN spec.changes_closure nw ON nw.child_id=" + sqlString(state.Workspace) + " AND nw.parent_id=newer.change_id WHERE newer.file_id=fc.file_id AND na.depth>0 AND nw.depth<w.depth) ORDER BY w.depth ASC LIMIT 1")
 	if err != nil {
 		return resolvedReviewFile{}, err
 	}
@@ -661,7 +747,7 @@ func resolveReviewPath(p string) (string, string, error) {
 	if dir == "." {
 		dir = ""
 	}
-	if !isCodeSpecName(name) && (dir != "schemas" || !strings.HasSuffix(name, ".md")) {
+	if !isCodeSpecName(name) && (dir != "schemas" || !strings.HasSuffix(name, ".md")) && !isTextAssetDir(dir) {
 		return "", "", fmt.Errorf("unsupported review spec path %q", p)
 	}
 	return dir, name, nil

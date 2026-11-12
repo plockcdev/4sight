@@ -1,0 +1,1 @@
+Run `4sight spec change status` to see workspace, submitted, and implemented pointers.

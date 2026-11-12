@@ -1,0 +1,1 @@
+Use `prompt` to get review instructions or `response` to save the JSON review.

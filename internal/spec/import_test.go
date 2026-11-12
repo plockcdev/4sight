@@ -9,7 +9,7 @@ import (
 )
 
 type importedSpec struct {
-	dir, name, body, diff string
+	dir, name, body string
 }
 
 type fakeStore struct {
@@ -23,11 +23,6 @@ func (f *fakeStore) latestBody(dirPath, fileName string) (string, bool, error) {
 		}
 	}
 	return "", false, nil
-}
-
-func (f *fakeStore) insertSpec(dirPath, fileName, body, diff string) error {
-	f.specs = append(f.specs, importedSpec{dir: dirPath, name: fileName, body: body, diff: diff})
-	return nil
 }
 
 func (f *fakeStore) listWorkspaceBodies() ([]specDoc, error) {

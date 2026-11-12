@@ -1,0 +1,3 @@
+Use `4sight spec change author agent prompt` after saving a request with
+`4sight spec change request`. The prompt guides an agent to edit and import
+the relevant specifications before review.

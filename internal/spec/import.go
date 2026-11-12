@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 var specTokenRe = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]*$`)
@@ -41,14 +43,14 @@ func resolveSpecLocation(loc []string) (dirRel, name string, err error) {
 }
 
 type specDoc struct {
-	Dir  string
-	Name string
-	Body string
+	Dir     string
+	Name    string
+	Body    string
+	Deleted bool
 }
 
 type store interface {
 	latestBody(dirPath, fileName string) (string, bool, error)
-	insertSpec(dirPath, fileName, body, diff string) error
 	listLatestBodies() ([]specDoc, error)
 }
 
@@ -58,6 +60,36 @@ func isCodeSpecName(name string) bool {
 		return true
 	}
 	return false
+}
+
+func isTextAssetDir(dir string) bool {
+	parts := strings.Split(filepath.ToSlash(dir), "/")
+	if len(parts) < 2 || (parts[0] != "main" && parts[0] != "subcommands") {
+		return false
+	}
+	return slices.Contains(parts[1:], "assets")
+}
+
+func isTextAsset(data []byte) bool {
+	if !utf8.Valid(data) {
+		return false
+	}
+	for _, r := range string(data) {
+		if r == '\t' || r == '\n' || r == '\r' {
+			continue
+		}
+		if r == 0 || unicode.IsControl(r) {
+			return false
+		}
+	}
+	return true
+}
+
+func normalizeTrackedBody(dir, name, body string) string {
+	if isTextAssetDir(filepath.ToSlash(filepath.Join(dir, name))) {
+		return body
+	}
+	return normalizeSpecBody(body)
 }
 
 func displaySpecPath(dirRel, name string) string {
@@ -107,9 +139,20 @@ func unifiedDiff(oldText, newText string) string {
 
 func unifiedDiffPaths(oldPath, newPath, oldText, newText string) string {
 	if oldText == newText {
+		if oldPath != newPath {
+			return fmt.Sprintf("--- %s\n+++ %s\n", oldPath, newPath)
+		}
 		return ""
 	}
-	ops := lineDiffOps(diffLines(oldText), diffLines(newText))
+	oldLines := diffLines(oldText)
+	newLines := diffLines(newText)
+	if len(oldLines) > 0 && !strings.HasSuffix(oldText, "\n") {
+		oldLines[len(oldLines)-1] += "\x00"
+	}
+	if len(newLines) > 0 && !strings.HasSuffix(newText, "\n") {
+		newLines[len(newLines)-1] += "\x00"
+	}
+	ops := lineDiffOps(oldLines, newLines)
 	hunks := diffHunks(ops, 3)
 	if len(hunks) == 0 {
 		return ""
@@ -217,8 +260,11 @@ func writeDiffHunk(b *strings.Builder, ops []diffOp, hunk diffHunk) {
 	fmt.Fprintf(b, "@@ -%s +%s @@\n", diffRange(oldStart, oldCount), diffRange(newStart, newCount))
 	for _, op := range ops[hunk.start:hunk.end] {
 		b.WriteByte(op.tag)
-		b.WriteString(op.text)
+		b.WriteString(strings.TrimSuffix(op.text, "\x00"))
 		b.WriteByte('\n')
+		if strings.HasSuffix(op.text, "\x00") {
+			b.WriteString("\\ No newline at end of file\n")
+		}
 	}
 }
 
@@ -239,7 +285,7 @@ func diffSideSpan(ops []diffOp, hunk diffHunk, removeTag, keepTag byte) (start, 
 
 func diffRange(start, count int) string {
 	if count == 0 {
-		return "0,0"
+		return fmt.Sprintf("%d,0", start-1)
 	}
 	return fmt.Sprintf("%d,%d", start, count)
 }

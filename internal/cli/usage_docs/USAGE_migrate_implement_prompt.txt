@@ -1,0 +1,1 @@
+Pass a schema filename from `.4sight/schemas`, for example `4sight migrate implement prompt dolt_example.md`.

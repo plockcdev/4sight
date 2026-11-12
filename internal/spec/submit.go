@@ -35,6 +35,9 @@ func runChangeSubmit(root string, st changeSubmitStore, stdout io.Writer) error 
 	}
 	db := make(map[specKey]string, len(bodies))
 	for _, body := range bodies {
+		if body.Deleted {
+			continue
+		}
 		db[specKey{dir: body.Dir, name: body.Name}] = body.Body
 	}
 	keys := make(map[specKey]struct{}, len(db)+len(disk))
@@ -48,7 +51,7 @@ func runChangeSubmit(root string, st changeSubmitStore, stdout io.Writer) error 
 	for key := range keys {
 		local, onDisk := disk[key]
 		cached, inDB := db[key]
-		if normalizeSpecBody(local) == normalizeSpecBody(cached) {
+		if inDB == onDisk && (!inDB || normalizeTrackedBody(key.dir, key.name, local) == normalizeTrackedBody(key.dir, key.name, cached)) {
 			continue
 		}
 		path := specRelPath(key.dir, key.name)
@@ -139,8 +142,8 @@ func (s *doltStore) applyChangeSubmit(workspace string) error {
 	var script strings.Builder
 	script.WriteString("START TRANSACTION;\n")
 	script.WriteString("DELETE FROM spec.bodies WHERE state = 'submitted';\n")
-	script.WriteString("INSERT INTO spec.bodies (body, file_id, file_change_id, state, ieee_crc32, summary) " +
-		"SELECT body, file_id, file_change_id, 'submitted', ieee_crc32, summary FROM spec.bodies WHERE state = 'workspace';\n")
+	script.WriteString("INSERT INTO spec.bodies (body, file_id, file_change_id, state, ieee_crc32, summary, deleted) " +
+		"SELECT body, file_id, file_change_id, 'submitted', ieee_crc32, summary, deleted FROM spec.bodies WHERE state = 'workspace';\n")
 	fmt.Fprintf(&script, "UPDATE spec.current_changes SET submitted_change_id = %s WHERE singleton = 1;\n", sqlString(workspace))
 	script.WriteString("COMMIT;\n")
 	if err := s.run("sql", "-q", script.String()); err != nil {
@@ -205,8 +208,8 @@ func (s *doltStore) applyImplementationDone(submitted string) error {
 	var script strings.Builder
 	script.WriteString("START TRANSACTION;\n")
 	script.WriteString("DELETE FROM spec.bodies WHERE state = 'implemented';\n")
-	script.WriteString("INSERT INTO spec.bodies (body, file_id, file_change_id, state, ieee_crc32, summary) " +
-		"SELECT body, file_id, file_change_id, 'implemented', ieee_crc32, summary FROM spec.bodies WHERE state = 'submitted';\n")
+	script.WriteString("INSERT INTO spec.bodies (body, file_id, file_change_id, state, ieee_crc32, summary, deleted) " +
+		"SELECT body, file_id, file_change_id, 'implemented', ieee_crc32, summary, deleted FROM spec.bodies WHERE state = 'submitted';\n")
 	fmt.Fprintf(&script, "UPDATE spec.current_changes SET implemented_change_id = %s WHERE singleton = 1;\n", sqlString(submitted))
 	script.WriteString("COMMIT;\n")
 	if err := s.run("sql", "-q", script.String()); err != nil {

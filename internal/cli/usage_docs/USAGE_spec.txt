@@ -1,0 +1,1 @@
+Use `4sight spec change import` to record spec edits, then review and submit them.

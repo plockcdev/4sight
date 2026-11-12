@@ -1,0 +1,1 @@
+Run `4sight init` at a git repository root to initialize 4sight. Use `4sight migrate up` to apply submitted schema migrations. Manage spec edits with `4sight spec change import`, `review`, and `submit`; then run `4sight spec implement prompt` to implement submitted code changes.

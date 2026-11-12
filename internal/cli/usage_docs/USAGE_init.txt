@@ -1,0 +1,1 @@
+Run `4sight init` once from the root of a git repository. It creates `.4sight`, initializes Dolt, and installs the managed instructions.

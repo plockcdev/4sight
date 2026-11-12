@@ -20,12 +20,18 @@ func ChangeImport(cwd string) error {
 }
 
 type plannedChange struct {
-	Dir     string
-	Name    string
-	Path    string
-	Body    string
-	Diff    string
-	Summary string
+	Dir            string
+	Name           string
+	Path           string
+	PriorPath      string
+	RelatedPath    string
+	Body           string
+	OldBody        string
+	Diff           string
+	Summary        string
+	Deleted        bool
+	Similarity     float64
+	CopyCandidates []string
 }
 
 type changeImportStore interface {
@@ -67,13 +73,20 @@ func runChangeImport(metadataRoot string, st changeImportStore, stdout, stderr i
 	if err := st.applyChangeImport(id, parent, planned); err != nil {
 		return fmt.Errorf("record change import: %w", err)
 	}
+	for _, file := range planned {
+		if len(file.CopyCandidates) > 0 {
+			if _, err := fmt.Fprintf(stderr, "ambiguous copy candidates for %s: %s\n", file.Path, strings.Join(file.CopyCandidates, ", ")); err != nil {
+				return fmt.Errorf("report ambiguous copy candidates: %w", err)
+			}
+		}
+	}
 	return writeChangeImportYAML(stdout, id, planned)
 }
 
 func planChangeImport(metadataRoot string, disk map[specKey]string, bodies []specDoc) ([]plannedChange, error) {
-	dbBodies := make(map[specKey]string, len(bodies))
+	dbBodies := make(map[specKey]specDoc, len(bodies))
 	for _, doc := range bodies {
-		dbBodies[specKey{dir: doc.Dir, name: doc.Name}] = doc.Body
+		dbBodies[specKey{dir: doc.Dir, name: doc.Name}] = doc
 	}
 	keys := make(map[specKey]bool, len(disk)+len(dbBodies))
 	for key := range disk {
@@ -90,35 +103,217 @@ func planChangeImport(metadataRoot string, disk map[specKey]string, bodies []spe
 			return nil, err
 		}
 		oldText := ""
+		oldDeleted := true
 		if body, ok := dbBodies[key]; ok {
-			oldText = normalizeSpecBody(body)
+			oldDeleted = body.Deleted
+		}
+		if body, ok := dbBodies[key]; ok && !body.Deleted {
+			oldText = normalizeTrackedBody(key.dir, key.name, body.Body)
 		}
 		newText := ""
 		if onDisk {
-			newText = normalizeSpecBody(rawDisk)
+			newText = normalizeTrackedBody(key.dir, key.name, rawDisk)
 		}
-		if oldText == newText {
+		newDeleted := !onDisk
+		if oldText == newText && oldDeleted == newDeleted {
 			continue
 		}
 		path := specRelPath(key.dir, key.name)
-		diff := unifiedDiffPaths(path, path, oldText, newText)
-		if diff == "" {
-			continue
+		oldDiffPath, newDiffPath := path, path
+		if oldDeleted {
+			oldDiffPath = "/dev/null"
 		}
+		if newDeleted {
+			newDiffPath = "/dev/null"
+		}
+		diff := unifiedDiffPaths(oldDiffPath, newDiffPath, oldText, newText)
 		add, del := lineChangeCounts(oldText, newText)
 		planned = append(planned, plannedChange{
 			Dir:     key.dir,
 			Name:    key.name,
 			Path:    path,
 			Body:    newText,
+			OldBody: oldText,
 			Diff:    diff,
 			Summary: fmt.Sprintf("+%d/-%d", add, del),
+			Deleted: newDeleted,
 		})
 	}
+	planned = associateRenames(planned)
+	planned = associateCopies(planned, dbBodies, disk)
 	slices.SortFunc(planned, func(a, b plannedChange) int {
 		return strings.Compare(a.Path, b.Path)
 	})
 	return planned, nil
+}
+
+func associateCopies(planned []plannedChange, bodies map[specKey]specDoc, disk map[specKey]string) []plannedChange {
+	type source struct {
+		path, lookupPath, body string
+	}
+	sources := make(map[string]source)
+	for key, doc := range bodies {
+		if doc.Deleted {
+			continue
+		}
+		if content, ok := disk[key]; ok {
+			path := specRelPath(key.dir, key.name)
+			sources[path] = source{path: path, lookupPath: path, body: normalizeTrackedBody(key.dir, key.name, content)}
+		}
+	}
+	for _, change := range planned {
+		if change.PriorPath != "" && !change.Deleted {
+			sources[change.Path] = source{path: change.Path, lookupPath: change.PriorPath, body: change.Body}
+		}
+	}
+	for i := range planned {
+		copy := &planned[i]
+		if copy.Deleted || copy.PriorPath != "" || copy.OldBody != "" || copy.Body == "" {
+			continue
+		}
+		var candidates []source
+		var scores []float64
+		for _, src := range sources {
+			if src.path == copy.Path || src.body == "" {
+				continue
+			}
+			score := fileSimilarity(src.body, copy.Body)
+			if score >= 0.60 {
+				candidates = append(candidates, src)
+				scores = append(scores, score)
+			}
+		}
+		if len(candidates) == 0 {
+			continue
+		}
+		best, second := 0, 0.0
+		for i := range candidates {
+			if scores[i] > scores[best] {
+				second = scores[best]
+				best = i
+			} else if scores[i] > second {
+				second = scores[i]
+			}
+		}
+		if scores[best]-second >= 0.10 {
+			copy.RelatedPath = candidates[best].lookupPath
+			copy.Similarity = scores[best]
+			continue
+		}
+		for i, candidate := range candidates {
+			copy.CopyCandidates = append(copy.CopyCandidates, fmt.Sprintf("%s (%.5f)", candidate.path, scores[i]))
+		}
+		slices.Sort(copy.CopyCandidates)
+	}
+	return planned
+}
+
+func associateRenames(planned []plannedChange) []plannedChange {
+	var removed, added []int
+	for i, change := range planned {
+		if change.Deleted && change.OldBody != "" {
+			removed = append(removed, i)
+		} else if !change.Deleted && change.OldBody == "" && change.Body != "" {
+			added = append(added, i)
+		}
+	}
+	if len(removed) == 0 || len(added) == 0 {
+		return planned
+	}
+	type candidate struct {
+		removed, added int
+		score          float64
+	}
+	var candidates []candidate
+	for _, oldIndex := range removed {
+		for _, newIndex := range added {
+			oldFile, newFile := planned[oldIndex], planned[newIndex]
+			score := fileSimilarity(oldFile.OldBody, newFile.Body)
+			if score >= 0.60 {
+				candidates = append(candidates, candidate{removed: oldIndex, added: newIndex, score: score})
+			}
+		}
+	}
+	bestForOld := make(map[int]candidate)
+	secondForOld := make(map[int]float64)
+	bestForNew := make(map[int]candidate)
+	secondForNew := make(map[int]float64)
+	for _, item := range candidates {
+		if best, ok := bestForOld[item.removed]; !ok || item.score > best.score {
+			if ok {
+				secondForOld[item.removed] = best.score
+			}
+			bestForOld[item.removed] = item
+		} else if item.score > secondForOld[item.removed] {
+			secondForOld[item.removed] = item.score
+		}
+		if best, ok := bestForNew[item.added]; !ok || item.score > best.score {
+			if ok {
+				secondForNew[item.added] = best.score
+			}
+			bestForNew[item.added] = item
+		} else if item.score > secondForNew[item.added] {
+			secondForNew[item.added] = item.score
+		}
+	}
+	paired := make(map[int]int)
+	for oldIndex, best := range bestForOld {
+		if best.score-secondForOld[oldIndex] < 0.10 {
+			continue
+		}
+		newBest, ok := bestForNew[best.added]
+		if !ok || newBest.removed != oldIndex || newBest.score-secondForNew[best.added] < 0.10 {
+			continue
+		}
+		paired[oldIndex] = best.added
+	}
+	if len(paired) == 0 {
+		return planned
+	}
+	removedIndexes := make(map[int]bool)
+	for oldIndex, newIndex := range paired {
+		oldFile, newFile := planned[oldIndex], planned[newIndex]
+		newFile.PriorPath = oldFile.Path
+		newFile.OldBody = oldFile.OldBody
+		newFile.Diff = unifiedDiffPaths(oldFile.Path, newFile.Path, oldFile.OldBody, newFile.Body)
+		add, del := lineChangeCounts(oldFile.OldBody, newFile.Body)
+		newFile.Summary = fmt.Sprintf("+%d/-%d", add, del)
+		newFile.Similarity = bestForOld[oldIndex].score
+		planned[newIndex] = newFile
+		removedIndexes[oldIndex] = true
+	}
+	result := make([]plannedChange, 0, len(planned)-len(removedIndexes))
+	for i, change := range planned {
+		if !removedIndexes[i] {
+			result = append(result, change)
+		}
+	}
+	return result
+}
+
+func fileSimilarity(oldText, newText string) float64 {
+	oldLines, newLines := diffLines(oldText), diffLines(newText)
+	if len(oldLines) == 0 || len(newLines) == 0 {
+		return 0
+	}
+	var added, deleted int
+	for _, op := range lineDiffOps(oldLines, newLines) {
+		switch op.tag {
+		case '+':
+			added++
+		case '-':
+			deleted++
+		}
+	}
+	denominator := max(len(oldLines), len(newLines))
+	return maxFloat(0, 1-float64(added+deleted)/float64(denominator))
+}
+
+func maxFloat(a, b float64) float64 {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func diskSpec(metadataRoot string, disk map[specKey]string, key specKey) (string, bool, error) {
@@ -141,6 +336,14 @@ func specRelPath(dir, name string) string {
 		return name
 	}
 	return dir + "/" + name
+}
+
+func splitSpecRelPath(path string) (dir, name string) {
+	index := strings.LastIndexByte(path, '/')
+	if index < 0 {
+		return "", path
+	}
+	return path[:index], path[index+1:]
 }
 
 func normalizeSpecBody(s string) string {
@@ -288,21 +491,23 @@ func isDigit(b byte) bool {
 
 func (s *doltStore) listWorkspaceBodies() ([]specDoc, error) {
 	rows, err := s.queryCSV(
-		"SELECT d.path, f.name, b.body FROM spec.bodies b" +
+		"SELECT d.path, p.name, b.body, b.deleted FROM spec.bodies b" +
 			" JOIN spec.files f ON f.id = b.file_id" +
-			" JOIN spec.dirs d ON d.id = f.dir_id" +
+			" JOIN spec.file_changes fc ON fc.id = b.file_change_id" +
+			" JOIN spec.filepaths p ON p.id = fc.filepath_id" +
+			" JOIN spec.dirs d ON d.id = p.dir_id" +
 			" WHERE b.state = 'workspace'" +
-			" ORDER BY d.path, f.name",
+			" ORDER BY d.path, p.name, b.deleted DESC",
 	)
 	if err != nil {
 		return nil, err
 	}
 	docs := make([]specDoc, 0, len(rows))
 	for _, row := range rows {
-		if len(row) < 3 {
+		if len(row) < 4 {
 			continue
 		}
-		docs = append(docs, specDoc{Dir: row[0], Name: row[1], Body: row[2]})
+		docs = append(docs, specDoc{Dir: row[0], Name: row[1], Body: row[2], Deleted: row[3] == "1" || strings.EqualFold(row[3], "true")})
 	}
 	return docs, nil
 }
@@ -352,8 +557,10 @@ func (s *doltStore) applyChangeImport(id, parent string, files []plannedChange) 
 	}
 
 	type storedFile struct {
-		fileID uint64
-		file   plannedChange
+		fileID        uint64
+		pathID        uint64
+		relatedFileID uint64
+		file          plannedChange
 	}
 	stored := make([]storedFile, 0, len(files))
 	for _, file := range files {
@@ -361,11 +568,71 @@ func (s *doltStore) applyChangeImport(id, parent string, files []plannedChange) 
 		if err != nil {
 			return err
 		}
-		fileID, err := s.ensureFile(dirID, file.Name)
+		var fileID, pathID uint64
+		if file.PriorPath != "" {
+			oldDir, oldName := splitSpecRelPath(file.PriorPath)
+			oldDirID, err := s.ensureDir(oldDir)
+			if err != nil {
+				return err
+			}
+			oldPathID, ok, err := s.lookupID(fmt.Sprintf("SELECT id FROM spec.filepaths WHERE dir_id = %d AND name = %s", oldDirID, sqlString(oldName)))
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return fmt.Errorf("previous filepath %s was not found", file.PriorPath)
+			}
+			fileID, ok, err = s.lookupID(fmt.Sprintf("SELECT id FROM spec.files WHERE current_filepath_id = %d", oldPathID))
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return fmt.Errorf("live file at previous filepath %s was not found", file.PriorPath)
+			}
+			pathID, err = s.ensureFilepath(dirID, file.Name)
+			if err != nil {
+				return err
+			}
+		} else {
+			fileID, err = s.ensureFile(dirID, file.Name)
+			if err != nil {
+				return err
+			}
+			pathID, err = s.ensureFilepath(dirID, file.Name)
+			if err != nil {
+				return err
+			}
+		}
+		_, ok, err := s.lookupID(fmt.Sprintf("SELECT id FROM spec.filepaths WHERE id = %d", pathID))
 		if err != nil {
 			return err
 		}
-		stored = append(stored, storedFile{fileID: fileID, file: file})
+		if !ok {
+			return fmt.Errorf("filepath %s was not found after insert", file.Path)
+		}
+		var relatedFileID uint64
+		if file.RelatedPath != "" {
+			relatedDir, relatedName := splitSpecRelPath(file.RelatedPath)
+			relatedDirID, err := s.ensureDir(relatedDir)
+			if err != nil {
+				return err
+			}
+			relatedPathID, found, err := s.lookupID(fmt.Sprintf("SELECT id FROM spec.filepaths WHERE dir_id = %d AND name = %s", relatedDirID, sqlString(relatedName)))
+			if err != nil {
+				return err
+			}
+			if !found {
+				return fmt.Errorf("copy source filepath %s was not found", file.RelatedPath)
+			}
+			relatedFileID, found, err = s.lookupID(fmt.Sprintf("SELECT id FROM spec.files WHERE current_filepath_id = %d", relatedPathID))
+			if err != nil {
+				return err
+			}
+			if !found {
+				return fmt.Errorf("live copy source %s was not found", file.RelatedPath)
+			}
+		}
+		stored = append(stored, storedFile{fileID: fileID, pathID: pathID, relatedFileID: relatedFileID, file: file})
 	}
 
 	var script strings.Builder
@@ -385,24 +652,42 @@ func (s *doltStore) applyChangeImport(id, parent string, files []plannedChange) 
 		sqlString(id),
 	)
 	for _, item := range stored {
+		deleted := 0
+		if item.file.Deleted {
+			deleted = 1
+		}
+		similarity := "NULL"
+		if item.file.PriorPath != "" || item.file.RelatedPath != "" {
+			similarity = fmt.Sprintf("%.5f", item.file.Similarity)
+		}
+		relatedFileID := "NULL"
+		if item.relatedFileID != 0 {
+			relatedFileID = fmt.Sprintf("%d", item.relatedFileID)
+		}
 		fmt.Fprintf(&script,
-			"INSERT INTO spec.file_changes (change_id, file_id, diff) VALUES (%s, %d, %s);\n",
-			sqlString(id), item.fileID, sqlBodyLiteral(item.file.Diff),
+			"INSERT INTO spec.file_changes (change_id, file_id, filepath_id, diff, deleted, related_file_id, similarity) VALUES (%s, %d, %d, %s, %d, %s, %s);\n",
+			sqlString(id), item.fileID, item.pathID, sqlBodyLiteral(item.file.Diff), deleted, relatedFileID, similarity,
 		)
 		fmt.Fprintf(&script,
 			"DELETE FROM spec.bodies WHERE file_id = %d AND state = 'workspace';\n",
 			item.fileID,
 		)
 		fmt.Fprintf(&script,
-			"INSERT INTO spec.bodies (body, file_id, file_change_id, state, ieee_crc32, summary) "+
-				"SELECT %s, %d, fc.id, 'workspace', %d, '' FROM spec.file_changes fc "+
+			"INSERT INTO spec.bodies (body, file_id, file_change_id, state, ieee_crc32, summary, deleted) "+
+				"SELECT %s, %d, fc.id, 'workspace', %d, '', %d FROM spec.file_changes fc "+
 				"WHERE fc.change_id = %s AND fc.file_id = %d;\n",
 			sqlBodyLiteral(item.file.Body),
 			item.fileID,
 			crc32.ChecksumIEEE([]byte(item.file.Body)),
+			deleted,
 			sqlString(id),
 			item.fileID,
 		)
+		if item.file.Deleted {
+			fmt.Fprintf(&script, "UPDATE spec.files SET current_filepath_id = NULL WHERE id = %d;\n", item.fileID)
+		} else if item.file.PriorPath != "" {
+			fmt.Fprintf(&script, "UPDATE spec.files SET current_filepath_id = %d WHERE id = %d;\n", item.pathID, item.fileID)
+		}
 	}
 	script.WriteString("COMMIT;\n")
 	if err := s.run("sql", "-q", script.String()); err != nil {

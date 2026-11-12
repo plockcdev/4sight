@@ -1,0 +1,1 @@
+Run `4sight spec sync-check` to find files needing import or export.

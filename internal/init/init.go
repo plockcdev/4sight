@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"foursight.dev/4sight/internal/spec"
 )
 
 //go:embed assets migrations
@@ -103,6 +105,15 @@ func run(cwd string, source fs.FS, stdout interface{ Write([]byte) (int, error) 
 		}
 		if err := os.WriteFile(item.target, body, 0o644); err != nil {
 			return fmt.Errorf("write %s: %w", item.target, err)
+		}
+	}
+	workspaceRows, err := (doltBootstrap{dataDir: database}).queryCSV("SELECT workspace_change_id FROM spec.current_changes WHERE singleton = 1")
+	if err != nil {
+		return fmt.Errorf("read workspace spec change after bootstrap: %w", err)
+	}
+	if len(workspaceRows) == 1 && len(workspaceRows[0]) > 0 && workspaceRows[0][0] == "ch-000" {
+		if err := spec.ChangeImport(root); err != nil {
+			return fmt.Errorf("import initialized specs: %w", err)
 		}
 	}
 	if err := commitInitializedFiles(root); err != nil {

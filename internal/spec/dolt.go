@@ -17,19 +17,15 @@ func newDoltStore(dataDir string) *doltStore {
 	return &doltStore{dataDir: dataDir}
 }
 
-const fileChangeHeadFilter = " NOT EXISTS (" +
-	"SELECT 1 FROM spec.file_changes newer" +
-	" WHERE newer.file_id = fc.file_id AND newer.prior_file_change_id = fc.id" +
-	")"
-
 func (s *doltStore) latestBody(dirPath, fileName string) (string, bool, error) {
 	query := "SELECT b.body FROM spec.bodies b" +
+		" JOIN spec.files f ON f.id = b.file_id" +
 		" JOIN spec.file_changes fc ON fc.id = b.file_change_id" +
-		" JOIN spec.files f ON f.id = fc.file_id" +
-		" JOIN spec.dirs d ON d.id = f.dir_id" +
+		" JOIN spec.filepaths p ON p.id = fc.filepath_id" +
+		" JOIN spec.dirs d ON d.id = p.dir_id" +
 		" WHERE d.path = " + sqlString(dirPath) +
-		" AND f.name = " + sqlString(fileName) +
-		" AND" + fileChangeHeadFilter +
+		" AND p.name = " + sqlString(fileName) +
+		" AND b.state = 'workspace' AND b.deleted = FALSE" +
 		" LIMIT 1"
 	rows, err := s.queryCSV(query)
 	if err != nil {
@@ -42,11 +38,13 @@ func (s *doltStore) latestBody(dirPath, fileName string) (string, bool, error) {
 }
 
 func (s *doltStore) listLatestBodies() ([]specDoc, error) {
-	query := "SELECT d.path, f.name, b.body FROM spec.bodies b" +
+	query := "SELECT d.path, p.name, b.body, b.deleted FROM spec.bodies b" +
 		" JOIN spec.files f ON f.id = b.file_id" +
-		" JOIN spec.dirs d ON d.id = f.dir_id" +
+		" JOIN spec.file_changes fc ON fc.id = b.file_change_id" +
+		" JOIN spec.filepaths p ON p.id = fc.filepath_id" +
+		" JOIN spec.dirs d ON d.id = p.dir_id" +
 		" WHERE b.state = 'workspace'" +
-		" ORDER BY d.path, f.name"
+		" ORDER BY d.path, p.name, b.deleted DESC"
 	rows, err := s.queryCSV(query)
 	if err != nil {
 		return nil, err
@@ -54,10 +52,10 @@ func (s *doltStore) listLatestBodies() ([]specDoc, error) {
 	latest := make(map[string]specDoc)
 	var order []string
 	for _, row := range rows {
-		if len(row) < 3 {
+		if len(row) < 4 {
 			continue
 		}
-		doc := specDoc{Dir: row[0], Name: row[1], Body: row[2]}
+		doc := specDoc{Dir: row[0], Name: row[1], Body: row[2], Deleted: row[3] == "1" || strings.EqualFold(row[3], "true")}
 		key := doc.Dir + "\x00" + doc.Name
 		if _, ok := latest[key]; !ok {
 			order = append(order, key)
@@ -69,58 +67,6 @@ func (s *doltStore) listLatestBodies() ([]specDoc, error) {
 		docs = append(docs, latest[key])
 	}
 	return docs, nil
-}
-
-func (s *doltStore) latestFileChangeID(fileID uint64) (uint64, bool, error) {
-	query := fmt.Sprintf(
-		"SELECT fc.id FROM spec.file_changes fc WHERE fc.file_id = %d AND"+fileChangeHeadFilter+" ORDER BY fc.id DESC LIMIT 1",
-		fileID,
-	)
-	return s.lookupID(query)
-}
-
-func (s *doltStore) insertSpec(dirPath, fileName, body, diff string) error {
-	dirID, err := s.ensureDir(dirPath)
-	if err != nil {
-		return err
-	}
-	fileID, err := s.ensureFile(dirID, fileName)
-	if err != nil {
-		return err
-	}
-	priorID, hasPrior, err := s.latestFileChangeID(fileID)
-	if err != nil {
-		return err
-	}
-	var insertChange string
-	if hasPrior {
-		insertChange = fmt.Sprintf(
-			"INSERT INTO spec.file_changes (file_id, diff, prior_file_change_id) VALUES (%d, %s, %d)",
-			fileID, sqlBodyLiteral(diff), priorID,
-		)
-	} else {
-		insertChange = fmt.Sprintf(
-			"INSERT INTO spec.file_changes (file_id, diff) VALUES (%d, %s)",
-			fileID, sqlBodyLiteral(diff),
-		)
-	}
-	if err := s.run("sql", "-q", insertChange); err != nil {
-		return err
-	}
-	changeID, ok, err := s.lookupID(fmt.Sprintf(
-		"SELECT id FROM spec.file_changes WHERE file_id = %d ORDER BY id DESC LIMIT 1",
-		fileID,
-	))
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return fmt.Errorf("file change for file_id %d was not found after insert", fileID)
-	}
-	return s.run("sql", "-q", fmt.Sprintf(
-		"INSERT INTO spec.bodies (body, file_change_id) VALUES (%s, %d)",
-		sqlBodyLiteral(body), changeID,
-	))
 }
 
 func (s *doltStore) ensureDir(path string) (uint64, error) {
@@ -147,29 +93,55 @@ func (s *doltStore) ensureDir(path string) (uint64, error) {
 }
 
 func (s *doltStore) ensureFile(dirID uint64, name string) (uint64, error) {
-	query := fmt.Sprintf("SELECT id FROM spec.files WHERE dir_id = %d AND name = %s", dirID, sqlString(name))
-	id, ok, err := s.lookupID(query)
-	if err != nil || ok {
-		return id, err
-	}
-	if err := s.run("sql", "-q", fmt.Sprintf(
-		"INSERT INTO spec.files (dir_id, name) VALUES (%d, %s)",
-		dirID, sqlString(name),
-	)); err != nil {
-		id, ok, err2 := s.lookupID(query)
-		if err2 == nil && ok {
-			return id, nil
-		}
+	filepathID, err := s.ensureFilepath(dirID, name)
+	if err != nil {
 		return 0, err
 	}
-	id, ok, err = s.lookupID(query)
+	fileQuery := fmt.Sprintf("SELECT id FROM spec.files WHERE current_filepath_id = %d", filepathID)
+	fileID, ok, err := s.lookupID(fileQuery)
+	if err != nil || ok {
+		return fileID, err
+	}
+	if err := s.run("sql", "-q", fmt.Sprintf("INSERT INTO spec.files (current_filepath_id) VALUES (%d)", filepathID)); err != nil {
+		fileID, ok, err = s.lookupID(fileQuery)
+		if err != nil || !ok {
+			return 0, err
+		}
+		return fileID, nil
+	}
+	fileID, ok, err = s.lookupID(fileQuery)
 	if err != nil {
 		return 0, err
 	}
 	if !ok {
 		return 0, fmt.Errorf("file %s was not found after insert", name)
 	}
-	return id, nil
+	return fileID, nil
+}
+
+func (s *doltStore) ensureFilepath(dirID uint64, name string) (uint64, error) {
+	filepathQuery := fmt.Sprintf("SELECT id FROM spec.filepaths WHERE dir_id = %d AND name = %s", dirID, sqlString(name))
+	filepathID, ok, err := s.lookupID(filepathQuery)
+	if err != nil {
+		return 0, err
+	}
+	if !ok {
+		if err := s.run("sql", "-q", fmt.Sprintf("INSERT INTO spec.filepaths (dir_id, name) VALUES (%d, %s)", dirID, sqlString(name))); err != nil {
+			filepathID, ok, err = s.lookupID(filepathQuery)
+			if err != nil || !ok {
+				return 0, err
+			}
+		} else {
+			filepathID, ok, err = s.lookupID(filepathQuery)
+			if err != nil {
+				return 0, err
+			}
+		}
+	}
+	if !ok {
+		return 0, fmt.Errorf("filepath %s was not found after insert", name)
+	}
+	return filepathID, nil
 }
 
 func (s *doltStore) lookupID(query string) (uint64, bool, error) {

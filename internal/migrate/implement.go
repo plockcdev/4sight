@@ -99,6 +99,15 @@ func runImplementPrompt(metadataRoot, schemaRel string, stdout io.Writer, suffix
 			return err
 		}
 	}
+	if _, err := fmt.Fprintln(stdout, "Schema specs imply an `id` primary key for entity tables. Do not add a surrogate `id` to a pure join table; use its referenced columns as a composite primary key unless the schema spec specifies otherwise. Preserve any explicit natural key, custom identifier format, or nonstandard primary-key constraint."); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(stdout); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(stdout, "Resolve each reference against the referenced table's primary key. For a single-column primary key, name the SQL foreign-key column by appending `_id` to the conceptual reference name (for example, schema-spec `current_filepath` becomes SQL `current_filepath_id`). For a composite primary key, create one SQL foreign-key column per primary-key component, named `<reference_name>_<component_name>_id`, with compatible types and one composite foreign-key constraint in target-key order. Do not use a single `<reference_name>_id` column for a composite key. If the component mapping is unclear from the schema spec, stop and report the ambiguity rather than inventing a mapping. Keep `_id` as an SQL implementation convention; schema specs describe references semantically."); err != nil {
+		return err
+	}
 	if _, err := fmt.Fprintln(stdout); err != nil {
 		return err
 	}

@@ -38,6 +38,9 @@ func runSyncCheck(metadataRoot string, st workspaceBodyStore, stdout io.Writer) 
 
 	dbBodies := make(map[specKey]string, len(docs))
 	for _, doc := range docs {
+		if doc.Deleted {
+			continue
+		}
 		dbBodies[specKey{dir: doc.Dir, name: doc.Name}] = doc.Body
 	}
 	keys := make(map[specKey]bool, len(disk)+len(dbBodies))
@@ -58,13 +61,13 @@ func runSyncCheck(metadataRoot string, st workspaceBodyStore, stdout io.Writer) 
 		dbText := ""
 		_, inDB := dbBodies[key]
 		if inDB {
-			dbText = normalizeSpecBody(dbBodies[key])
+			dbText = normalizeTrackedBody(key.dir, key.name, dbBodies[key])
 		}
 		diskText := ""
 		if onDisk {
-			diskText = normalizeSpecBody(rawDisk)
+			diskText = normalizeTrackedBody(key.dir, key.name, rawDisk)
 		}
-		if dbText == diskText {
+		if inDB == onDisk && (!inDB || dbText == diskText) {
 			continue
 		}
 		needsImport = true
@@ -117,9 +120,6 @@ func listOnDiskCodeSpecs(metadataRoot string) (map[specKey]string, error) {
 			}
 			return nil
 		}
-		if !isCodeSpecName(d.Name()) {
-			return nil
-		}
 		rel, err := filepath.Rel(metadataRoot, path)
 		if err != nil {
 			return err
@@ -130,9 +130,22 @@ func listOnDiskCodeSpecs(metadataRoot string) (map[specKey]string, error) {
 		if rel != name {
 			dir = strings.TrimSuffix(rel, "/"+name)
 		}
+		asset := isTextAssetDir(filepath.ToSlash(rel))
+		if asset && d.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("text asset symlink is not supported: %s", relFromMetadata(metadataRoot, path))
+		}
+		if asset && !d.Type().IsRegular() && d.Type() != 0 {
+			return nil
+		}
+		if !asset && !isCodeSpecName(d.Name()) {
+			return nil
+		}
 		body, err := os.ReadFile(path)
 		if err != nil {
 			return fmt.Errorf("read spec file %s: %w", relFromMetadata(metadataRoot, path), err)
+		}
+		if asset && !isTextAsset(body) {
+			return nil
 		}
 		out[specKey{dir: dir, name: name}] = string(body)
 		return nil

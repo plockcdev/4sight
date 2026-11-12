@@ -27,6 +27,8 @@ type deps struct {
 	specChangeReviewPrompt       func(cwd string) error
 	specChangeReviewResponse     func(cwd string) error
 	specChangeReviewShow         func(cwd, changeID string) error
+	specChangeAuthorPrompt       func(cwd string) error
+	specChangeBody               func(cwd, changeID string, locator []string) error
 	init                         func(cwd string) error
 }
 
@@ -48,6 +50,8 @@ func Run(args []string) int {
 		specChangeReviewPrompt:       spec.ChangeReviewAgentPrompt,
 		specChangeReviewResponse:     spec.ChangeReviewAgentResponse,
 		specChangeReviewShow:         spec.ChangeReviewShow,
+		specChangeAuthorPrompt:       spec.ChangeAuthorAgentPrompt,
+		specChangeBody:               spec.ChangeBody,
 		init:                         initcmd.Run,
 	})
 }
@@ -174,8 +178,20 @@ func runHelpTopic(topic []string) int {
 	case "spec change review show":
 		printSpecChangeReviewShowHelp()
 		return 0
+	case "spec change author":
+		printSpecChangeAuthorHelp()
+		return 0
+	case "spec change author agent":
+		printSpecChangeAuthorAgentHelp()
+		return 0
+	case "spec change author agent prompt":
+		printSpecChangeAuthorAgentPromptHelp()
+		return 0
+	case "spec change body":
+		printSpecChangeBodyHelp()
+		return 0
 	default:
-		fmt.Fprintf(os.Stderr, "4sight: unknown help topic %q (try: migrate, migrate up, migrate implement prompt, spec, spec export, spec sync-check, spec sync-diff, spec implement prompt, spec change, spec change import, spec change list, spec change request, spec change status)\n", strings.Join(topic, " "))
+		fmt.Fprintf(os.Stderr, "4sight: unknown help topic %q (try: migrate, migrate up, migrate implement prompt, spec, spec export, spec sync-check, spec sync-diff, spec implement prompt, spec change, spec change import, spec change list, spec change request, spec change status, spec change author agent prompt)\n", strings.Join(topic, " "))
 		return 1
 	}
 }
@@ -359,6 +375,10 @@ func parseSpecChange(args []string, d deps) int {
 		return parseSpecChangeImplement(args[1:], d)
 	case "review":
 		return parseSpecChangeReview(args[1:], d)
+	case "author":
+		return parseSpecChangeAuthor(args[1:], d)
+	case "body":
+		return parseSpecChangeBody(args[1:], d)
 	}
 	if strings.HasPrefix(args[0], "-") {
 		printSpecChangeHelp()
@@ -367,6 +387,83 @@ func parseSpecChange(args []string, d deps) int {
 	printSpecChangeHelp()
 	fmt.Fprintf(os.Stderr, "4sight spec change: unknown command %q\n", args[0])
 	return 1
+}
+
+func parseSpecChangeBody(args []string, d deps) int {
+	if len(args) == 0 || (len(args) == 1 && (args[0] == "-h" || args[0] == "--help")) {
+		printSpecChangeBodyHelp()
+		return 0
+	}
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "-") {
+			printSpecChangeBodyHelp()
+			return 1
+		}
+	}
+	if len(args) < 2 {
+		printSpecChangeBodyHelp()
+		fmt.Fprintln(os.Stderr, "4sight spec change body: requires a change ID and spec file locator")
+		return 1
+	}
+	cwd, err := d.getwd()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "4sight spec change body:", err)
+		return 1
+	}
+	if err := d.specChangeBody(cwd, args[0], args[1:]); err != nil {
+		fmt.Fprintln(os.Stderr, "4sight spec change body:", err)
+		return 1
+	}
+	return 0
+}
+
+func parseSpecChangeAuthor(args []string, d deps) int {
+	if len(args) == 0 {
+		printSpecChangeAuthorHelp()
+		return 0
+	}
+	if args[0] == "-h" || args[0] == "--help" {
+		printSpecChangeAuthorHelp()
+		return 0
+	}
+	if args[0] != "agent" {
+		printSpecChangeAuthorHelp()
+		fmt.Fprintf(os.Stderr, "4sight spec change author: unknown command %q\n", args[0])
+		return 1
+	}
+	if len(args) == 1 {
+		printSpecChangeAuthorAgentHelp()
+		return 0
+	}
+	if args[1] == "-h" || args[1] == "--help" {
+		printSpecChangeAuthorAgentHelp()
+		if len(args) == 2 {
+			return 0
+		}
+		return 1
+	}
+	if args[1] != "prompt" {
+		printSpecChangeAuthorAgentHelp()
+		fmt.Fprintf(os.Stderr, "4sight spec change author agent: unknown command %q\n", args[1])
+		return 1
+	}
+	if len(args) != 2 {
+		printSpecChangeAuthorAgentPromptHelp()
+		if len(args) == 3 && (args[2] == "-h" || args[2] == "--help") {
+			return 0
+		}
+		return 1
+	}
+	cwd, err := d.getwd()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "4sight spec change author agent prompt:", err)
+		return 1
+	}
+	if err := d.specChangeAuthorPrompt(cwd); err != nil {
+		fmt.Fprintln(os.Stderr, "4sight spec change author agent prompt:", err)
+		return 1
+	}
+	return 0
 }
 
 func parseSpecChangeSubmit(args []string, d deps) int {
@@ -739,11 +836,13 @@ func printMainHelp() {
 Commands:
   init              Initialize a repository for 4sight
   help              Show this help
+  usage             Show practical usage guidance
   migrate           Apply database schema migrations
   spec              Import and manage specification bodies
 
 Global options:
   -h, --help        Show this help
+  --usage           Show usage guidance for the current command
 
 Run "4sight help <command>" or "<command> --help" for command help.
 `)
@@ -811,6 +910,7 @@ Commands:
   sync-check        Compare database bodies with on-disk spec files
   sync-diff         Show unified diffs for spec differences
   implement         Generate implementation prompts from specs
+  usage             Show usage guidance
 
 Options:
   -h, --help        Show this help
@@ -852,6 +952,7 @@ func printSpecChangeHelp() {
 Record specification filesystem changes in the spec database.
 
 Commands:
+  body              Render a spec body at a change
   import            Persist filesystem spec deltas as a workspace change
   list              List changes with their summaries
   request           Save a prompt as a new workspace change
@@ -859,10 +960,28 @@ Commands:
   submit            Submit the current workspace change for implementation
   implement         Mark a submitted change as implemented
   review            Review changes to the specification
+  author            Prepare prompts for authoring spec changes
+  usage             Show usage guidance
 
 Options:
   -h, --help        Show this help
 `)
+}
+
+func printSpecChangeAuthorHelp() {
+	fmt.Print("4sight spec change author\n\nGenerate agent instructions for authoring spec changes.\n\nCommands:\n  agent             Prepare spec-authoring agent prompts\n\nOptions:\n  -h, --help        Show this help\n")
+}
+
+func printSpecChangeAuthorAgentHelp() {
+	fmt.Print("4sight spec change author agent\n\nPrepare agent prompts for spec authoring.\n\nCommands:\n  prompt            Output the authoring instructions\n\nOptions:\n  -h, --help        Show this help\n")
+}
+
+func printSpecChangeAuthorAgentPromptHelp() {
+	fmt.Print("4sight spec change author agent prompt\n\nOutput instructions for authoring spec changes from the saved request.\n\nThis command takes no arguments.\n\nOptions:\n  -h, --help        Show this help\n")
+}
+
+func printSpecChangeBodyHelp() {
+	fmt.Print("4sight spec change body <change-id> <spec file locator>\n\nRender a specification body at the given change. The locator is the command path followed by the filename, such as `mysubcommand design.md` or `main cmd.md`.\n\nOptions:\n  -h, --help        Show this help\n")
 }
 
 func printSpecChangeListHelp() {

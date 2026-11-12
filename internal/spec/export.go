@@ -31,6 +31,30 @@ func runExport(metadataRoot string, loc []string, st store, stdout io.Writer) er
 	if err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(stdout, "wrote %s\n", relFromMetadata(metadataRoot, path))
-	return err
+	if _, err := fmt.Fprintf(stdout, "wrote %s\n", relFromMetadata(metadataRoot, path)); err != nil {
+		return err
+	}
+	assets, ok := st.(interface {
+		listLatestBodies() ([]specDoc, error)
+	})
+	if !ok {
+		return nil
+	}
+	docs, err := assets.listLatestBodies()
+	if err != nil {
+		return fmt.Errorf("list tracked text assets: %w", err)
+	}
+	for _, doc := range docs {
+		if !isTextAssetDir(doc.Dir) || doc.Deleted {
+			continue
+		}
+		assetPath, err := writeSpecFile(metadataRoot, doc.Dir, doc.Name, doc.Body)
+		if err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(stdout, "wrote %s\n", relFromMetadata(metadataRoot, assetPath)); err != nil {
+			return err
+		}
+	}
+	return nil
 }

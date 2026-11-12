@@ -1,0 +1,1 @@
+Run `4sight spec change submit` after reviewing a workspace change to make it ready for implementation.

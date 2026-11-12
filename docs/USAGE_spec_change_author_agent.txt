@@ -1,0 +1,2 @@
+Run `4sight spec change author agent prompt` to prepare instructions from the
+saved workspace request.

@@ -1,11 +1,14 @@
 package cli
 
 import (
+	"embed"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 )
+
+//go:embed usage_docs/*.txt
+var usageDocs embed.FS
 
 var helpTopics = map[string]bool{
 	"": true, "init": true, "migrate": true, "migrate up": true,
@@ -18,6 +21,9 @@ var helpTopics = map[string]bool{
 	"spec change implement agent done": true, "spec change review": true,
 	"spec change review agent": true, "spec change review agent prompt": true,
 	"spec change review agent response": true, "spec change review show": true,
+	"spec change author": true, "spec change author agent": true,
+	"spec change author agent prompt": true,
+	"spec change body":                true,
 }
 
 var usageCommands = map[string]bool{
@@ -31,6 +37,9 @@ var usageCommands = map[string]bool{
 	"spec change implement agent done": true, "spec change review": true,
 	"spec change review agent": true, "spec change review agent prompt": true,
 	"spec change review agent response": true, "spec change review show": true,
+	"spec change author": true, "spec change author agent": true,
+	"spec change author agent prompt": true,
+	"spec change body":                true,
 }
 
 var plainUsageCommands = map[string]bool{
@@ -43,6 +52,8 @@ var plainUsageCommands = map[string]bool{
 	"spec change review": true, "spec change review agent": true,
 	"spec change review agent prompt": true, "spec change review agent response": true,
 	"spec change review show": true,
+	"spec change author":      true, "spec change author agent": true,
+	"spec change author agent prompt": true, "spec change body": true,
 }
 
 func runExplicitHelp(args []string) (int, bool) {
@@ -50,9 +61,18 @@ func runExplicitHelp(args []string) (int, bool) {
 		if arg != "-h" && arg != "--help" {
 			continue
 		}
-		printNearestHelp(args[:i])
-		if i == len(args)-1 {
-			return 0, true
+		prefix := args[:i]
+		printNearestHelp(prefix)
+		if i != len(args)-1 {
+			return 1, true
+		}
+		for n := len(prefix); n >= 0; n-- {
+			if helpTopics[strings.Join(prefix[:n], " ")] {
+				if n == len(prefix) {
+					return 0, true
+				}
+				return 1, true
+			}
 		}
 		return 1, true
 	}
@@ -79,13 +99,13 @@ func runUsage(args []string) (int, bool) {
 		if prefix != "" {
 			name += "_" + strings.ReplaceAll(prefix, " ", "_")
 		}
-		path := filepath.Join("docs", name+".txt")
-		body, err := os.ReadFile(path)
+		path := "usage_docs/" + name + ".txt"
+		body, err := usageDocs.ReadFile(path)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "4sight: usage file %s: %v\n", path, err)
+			fmt.Fprintf(os.Stderr, "4sight: embedded usage file %s: %v\n", path, err)
 			return 1, true
 		}
-		if _, err := os.Stdout.Write(body); err != nil {
+		if _, err := fmt.Print(string(body)); err != nil {
 			fmt.Fprintln(os.Stderr, "4sight: write usage:", err)
 			return 1, true
 		}

@@ -1,0 +1,1 @@
+Run `4sight spec sync-diff` to display differences between database bodies and files.

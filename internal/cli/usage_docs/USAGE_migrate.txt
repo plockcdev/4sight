@@ -1,0 +1,1 @@
+Run `4sight migrate up` to apply every submitted database migration.
