@@ -4,6 +4,10 @@ Overview: It is expected that an agent will call this command, read the output,
 and follow the output instructions as a prompt. This commands intent is to have
 the agent review the workspace change for quality.
 
+Review the specifications for clarity, completeness, and consistency. They
+describe intended behavior, which may not yet be implemented; do not treat
+missing or incomplete code implementation as a specification defect.
+
 The meta info is id of the current workspace change, the current submitted
 change, and the change prompt (if not empty).
 
