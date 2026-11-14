@@ -156,7 +156,7 @@ func runChangeReviewPrompt(root string, st *doltStore, out io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("read current changes: %w", err)
 	}
-	meta := fmt.Sprintf("Workspace change: %s\nSubmitted change: %s\nChange prompt: %s\n", state.Workspace, state.Submitted, nonempty(state.Prompt, "(empty)"))
+	meta := fmt.Sprintf("Change being reviewed (workspace change ID): %s\nWorkspace change: %s\nSubmitted change: %s\nChange prompt: %s\n", state.Workspace, state.Workspace, state.Submitted, nonempty(state.Prompt, "(empty)"))
 	if state.Workspace == state.Submitted {
 		_, err = fmt.Fprintln(out, meta+"There is no unsubmitted workspace change. Submit a request prompt or import spec changes, then run this command again.")
 		return err
@@ -288,7 +288,7 @@ func runChangeReviewPrompt(root string, st *doltStore, out io.Writer) error {
 			fmt.Fprintf(&b, "- %s\n", relationship)
 		}
 	}
-	b.WriteString("\nSubmit a qualitative review of every specification change after the submitted pointer through the workspace pointer, including earlier unsubmitted changes. The overall why, summary, description, details, and review must cover this full range, not just the latest change. Include one file_reviews entry for every file changed in this range. Send one JSON object to `4sight spec change review agent response` on stdin. Each file entry needs path, why, summary (max 65 characters), description, details, and body_summary (max 65 characters). Include overall why, summary (max 65 characters), description, details, review, and ready boolean. JSON shape:\n")
+	fmt.Fprintf(&b, "\nSubmit a qualitative review of every specification change after the submitted pointer through the workspace pointer, including earlier unsubmitted changes. The overall why, summary, description, details, and review must cover this full range, not just the latest change. Include one file_reviews entry for every file changed in this range. Send one JSON object to `4sight spec change review agent response %s` on stdin. This argument must be the change being reviewed ID shown above. Each file entry needs path, why, summary (max 65 characters), description, details, and body_summary (max 65 characters). Include overall why, summary (max 65 characters), description, details, review, and ready boolean. JSON shape:\n", state.Workspace)
 	b.WriteString("```json\n{\"why\":\"...\",\"summary\":\"...\",\"description\":\"...\",\"details\":\"...\",\"review\":\"...\",\"ready\":true,\"file_reviews\":[{\"path\":\".4sight/subcommands/example/cmd.md\",\"why\":\"...\",\"summary\":\"...\",\"description\":\"...\",\"details\":\"...\",\"body_summary\":\"...\"}]}\n```\n")
 	_, err = io.WriteString(out, b.String())
 	return err
@@ -301,10 +301,18 @@ func nonempty(s, fallback string) string {
 	return s
 }
 
-func ChangeReviewAgentResponse(cwd string) error {
+func ChangeReviewAgentResponse(cwd, changeID string) error {
 	root, err := findMetadataRoot(cwd)
 	if err != nil {
 		return err
+	}
+	st := newDoltStore(filepath.Join(root, "db"))
+	state, err := st.reviewState()
+	if err != nil {
+		return err
+	}
+	if changeID != state.Workspace {
+		return fmt.Errorf("change ID %s is not the latest workspace change %s; submit reviews only for the current workspace change", changeID, state.Workspace)
 	}
 	data, err := readReviewStdin(os.Stdin, time.Second)
 	if err != nil {
@@ -323,15 +331,10 @@ func ChangeReviewAgentResponse(cwd string) error {
 	if err := dec.Decode(&extra); err != io.EOF {
 		return fmt.Errorf("review input must contain exactly one JSON object")
 	}
-	st := newDoltStore(filepath.Join(root, "db"))
-	state, err := st.reviewState()
-	if err != nil {
+	if err := runChangeReviewResponse(root, st, changeID, response); err != nil {
 		return err
 	}
-	if err := runChangeReviewResponse(root, st, response); err != nil {
-		return err
-	}
-	_, err = fmt.Fprintf(os.Stdout, "Saved review for change %s.\n", state.Workspace)
+	_, err = fmt.Fprintf(os.Stdout, "Saved review for change %s.\n", changeID)
 	return err
 }
 
@@ -429,13 +432,16 @@ func validateReview(r reviewResponse) error {
 	return nil
 }
 
-func runChangeReviewResponse(root string, st *doltStore, r reviewResponse) error {
+func runChangeReviewResponse(root string, st *doltStore, changeID string, r reviewResponse) error {
 	if err := validateReview(r); err != nil {
 		return err
 	}
 	state, err := st.reviewState()
 	if err != nil {
 		return err
+	}
+	if state.Workspace != changeID {
+		return fmt.Errorf("change ID %s is not the latest workspace change %s; submit reviews only for the current workspace change", changeID, state.Workspace)
 	}
 	exists, err := st.queryCSV("SELECT id FROM spec.change_review WHERE change_id = " + sqlString(state.Workspace))
 	if err != nil {
@@ -492,12 +498,12 @@ func runChangeReviewResponse(root string, st *doltStore, r reviewResponse) error
 	}
 	var tx strings.Builder
 	tx.WriteString("START TRANSACTION;\n")
-	fmt.Fprintf(&tx, "INSERT INTO spec.change_review (name,change_id,why,summary,description,details,ready,review) VALUES (%s,%s,%s,%s,%s,%s,%d,%s);\n", sqlString(changeName), sqlString(state.Workspace), sqlBodyLiteral(r.Why), sqlBodyLiteral(r.Summary), sqlBodyLiteral(r.Description), sqlBodyLiteral(r.Details), ready, sqlBodyLiteral(r.Review))
+	fmt.Fprintf(&tx, "INSERT INTO spec.change_review (name,change_id,why,summary,description,details,ready,review) SELECT %s,%s,%s,%s,%s,%s,%d,%s FROM spec.current_changes WHERE singleton=1 AND workspace_change_id=%s;\n", sqlString(changeName), sqlString(changeID), sqlBodyLiteral(r.Why), sqlBodyLiteral(r.Summary), sqlBodyLiteral(r.Description), sqlBodyLiteral(r.Details), ready, sqlBodyLiteral(r.Review), sqlString(changeID))
 	for _, file := range resolved {
 		if file.ExistingReviewID != "" {
-			fmt.Fprintf(&tx, "UPDATE spec.file_change_reviews SET file_change_id=%s,change_review_id=(SELECT id FROM spec.change_review WHERE change_id=%s),why=%s,summary=%s,body_summary=%s,description=%s,details=%s WHERE id=%s;\n", file.FileChangeID, sqlString(state.Workspace), sqlBodyLiteral(file.Review.Why), sqlBodyLiteral(file.Review.Summary), sqlBodyLiteral(file.Review.BodySummary), sqlBodyLiteral(file.Review.Description), sqlBodyLiteral(file.Review.Details), file.ExistingReviewID)
+			fmt.Fprintf(&tx, "UPDATE spec.file_change_reviews SET file_change_id=%s,change_review_id=(SELECT id FROM spec.change_review WHERE change_id=%s),why=%s,summary=%s,body_summary=%s,description=%s,details=%s WHERE id=%s;\n", file.FileChangeID, sqlString(changeID), sqlBodyLiteral(file.Review.Why), sqlBodyLiteral(file.Review.Summary), sqlBodyLiteral(file.Review.BodySummary), sqlBodyLiteral(file.Review.Description), sqlBodyLiteral(file.Review.Details), file.ExistingReviewID)
 		} else {
-			fmt.Fprintf(&tx, "INSERT INTO spec.file_change_reviews (file_change_id,change_review_id,why,summary,body_summary,description,details) VALUES (%s,(SELECT id FROM spec.change_review WHERE change_id=%s),%s,%s,%s,%s,%s);\n", file.FileChangeID, sqlString(state.Workspace), sqlBodyLiteral(file.Review.Why), sqlBodyLiteral(file.Review.Summary), sqlBodyLiteral(file.Review.BodySummary), sqlBodyLiteral(file.Review.Description), sqlBodyLiteral(file.Review.Details))
+			fmt.Fprintf(&tx, "INSERT INTO spec.file_change_reviews (file_change_id,change_review_id,why,summary,body_summary,description,details) VALUES (%s,(SELECT id FROM spec.change_review WHERE change_id=%s),%s,%s,%s,%s,%s);\n", file.FileChangeID, sqlString(changeID), sqlBodyLiteral(file.Review.Why), sqlBodyLiteral(file.Review.Summary), sqlBodyLiteral(file.Review.BodySummary), sqlBodyLiteral(file.Review.Description), sqlBodyLiteral(file.Review.Details))
 		}
 		fmt.Fprintf(&tx, "UPDATE spec.bodies SET summary=%s WHERE file_id=%s AND state='workspace';\n", sqlBodyLiteral(file.Review.BodySummary), file.FileID)
 	}

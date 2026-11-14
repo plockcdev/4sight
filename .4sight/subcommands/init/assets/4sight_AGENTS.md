@@ -84,13 +84,12 @@ prompt` and follow the instructions
 Before handling a spec change request, check for un-imported spec changes. If
 any exist, stop and tell the user to import or reset them first.
 
-When the user requests a spec change and provides instructions, run
-`4sight spec change request <prompt>` with their request, then run
-`4sight spec change author agent prompt` and follow its instructions. The author
-prompt directs the agent to edit the relevant code or schema specs and import
-the changes.
+When the user requests a spec change and provides instructions, run `4sight spec
+change request <prompt>` with their request, then run `4sight spec change author
+agent prompt` and follow its instructions. The author prompt directs the agent
+to edit the relevant code or schema specs and import the changes.
 
-After importing authored spec changes, run
-`4sight spec change review agent prompt` and follow its instructions to review
-the imported changes. If the author prompt results in no spec edits, tell the
-user that no review is needed because no specs changed, then stop.
+After importing authored spec changes, run `4sight spec change review agent
+prompt` and follow its instructions to review the imported changes. If the
+author prompt results in no spec edits, tell the user that no review is needed
+because no specs changed, then stop.

@@ -3,6 +3,19 @@
 Allows agent to persist its generated review content as directed by the agent
 prompt command.
 
+## Input
+
+Require one positional `change-id` argument identifying the change being
+reviewed, followed by one JSON review object on stdin. Reject missing or extra
+arguments.
+
+Before reading or persisting the review, compare the supplied change ID with
+the current workspace change ID. If they differ, reject the response without
+writing any review and report both IDs; reviews can only be submitted for the
+latest workspace change. Use the supplied ID as the target change for all
+validation and persistence, and verify it is still the workspace change when
+the write is committed.
+
 Follows the Agent Prompt and Response Design
 
 Check for response errors, if there is one, stop, tell user how to remediate.
@@ -11,7 +24,8 @@ Check for response errors, if there is one, stop, tell user how to remediate.
 - must be only one review per file incoming
 - each file submitted must exist in filesystem and match the persisted body text
 
-Populate a new change review for the current workspace change pointer.
+Populate a new change review for the supplied change ID, after verifying it is
+the current workspace change.
 
 For each file change corrsponding to each review incoming, it may or may not
 have a review already.

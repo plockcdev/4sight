@@ -25,7 +25,7 @@ type deps struct {
 	specChangeSubmit             func(cwd string) error
 	specChangeImplementationDone func(cwd string) error
 	specChangeReviewPrompt       func(cwd string) error
-	specChangeReviewResponse     func(cwd string) error
+	specChangeReviewResponse     func(cwd, changeID string) error
 	specChangeReviewShow         func(cwd, changeID string) error
 	specChangeAuthorPrompt       func(cwd string) error
 	specChangeBody               func(cwd, changeID string, locator []string) error
@@ -655,8 +655,8 @@ func parseSpecChangeReviewAgent(args []string, d deps) int {
 		}
 		return 0
 	case "response":
-		if len(args) != 1 {
-			fmt.Fprintln(os.Stderr, "4sight spec change review agent response: takes no arguments")
+		if len(args) != 2 {
+			fmt.Fprintln(os.Stderr, "4sight spec change review agent response: requires one change-id argument")
 			return 1
 		}
 		cwd, err := d.getwd()
@@ -664,7 +664,7 @@ func parseSpecChangeReviewAgent(args []string, d deps) int {
 			fmt.Fprintln(os.Stderr, "4sight spec change review agent response:", err)
 			return 1
 		}
-		if err := d.specChangeReviewResponse(cwd); err != nil {
+		if err := d.specChangeReviewResponse(cwd, args[1]); err != nil {
 			fmt.Fprintln(os.Stderr, "4sight spec change review agent response:", err)
 			return 1
 		}
@@ -1087,13 +1087,13 @@ func printSpecChangeReviewHelp() {
 	fmt.Print("4sight spec change review\n\nCommands:\n  agent             Generate or submit an agent review\n  show [change-id]  Display a saved review\n\n")
 }
 func printSpecChangeReviewAgentHelp() {
-	fmt.Print("4sight spec change review agent\n\nCommands:\n  prompt            Output review instructions\n  response          Read and persist a JSON review from stdin\n\n")
+	fmt.Print("4sight spec change review agent\n\nCommands:\n  prompt            Output review instructions\n  response <change-id>  Read and persist a JSON review from stdin for the latest workspace change\n\n")
 }
 func printSpecChangeReviewPromptHelp() {
 	fmt.Print("4sight spec change review agent prompt\n\nOutput instructions for reviewing the workspace spec change.\n\n")
 }
 func printSpecChangeReviewResponseHelp() {
-	fmt.Print("4sight spec change review agent response\n\nRead one JSON review from stdin and persist it for the workspace change.\n\n")
+	fmt.Print("4sight spec change review agent response <change-id>\n\nRead one JSON review from stdin and persist it for the latest workspace change.\n\n")
 }
 func printSpecChangeReviewShowHelp() {
 	fmt.Print("4sight spec change review show [change-id]\n\nDisplay a saved review for the specified change, or the current workspace change when omitted.\n\n")

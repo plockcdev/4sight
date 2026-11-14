@@ -1,1 +1,2 @@
-Use `prompt` to get review instructions or `response` to save the JSON review.
+Use `prompt` to get review instructions or pass the workspace change ID to
+`response <change-id>` while piping the JSON review on stdin.

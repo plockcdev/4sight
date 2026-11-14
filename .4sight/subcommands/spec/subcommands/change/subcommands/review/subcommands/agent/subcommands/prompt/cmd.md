@@ -9,7 +9,9 @@ describe intended behavior, which may not yet be implemented; do not treat
 missing or incomplete code implementation as a specification defect.
 
 The meta info is id of the current workspace change, the current submitted
-change, and the change prompt (if not empty).
+change, and the change prompt (if not empty). Explicitly identify the workspace
+change ID as the change being reviewed and require the agent to pass that exact
+ID as the argument to the response command.
 
 Command do all the following sections unless conditions require the agent and
 command to stop.
@@ -99,7 +101,9 @@ provenance in the review context. Do not present inferred relationships as
 confirmed identity. Also include an overall change review and a review for each
 file updated since the "submitted" change pointer.
 
-Require the agent to run `4sight spec change review agent response` with the
-complete review in the required response command format with all its declared
-constraints. Check that the command succeeds. After it succeeds, the agent must
-include the overall review and per-file findings in its user-facing reply.
+Require the agent to run `4sight spec change review agent response
+<workspace_change_id>` with the complete review in the required response
+command format with all its declared constraints. The argument must be the
+workspace change ID rendered in the meta info. Check that the command succeeds.
+After it succeeds, the agent must include the overall review and per-file
+findings in its user-facing reply.
