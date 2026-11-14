@@ -30,6 +30,27 @@ func TestExportWritesBodyToDisk(t *testing.T) {
 	}
 }
 
+func TestMainSpecDiscoveryAndExport(t *testing.T) {
+	root := newMetadata(t)
+	path := filepath.Join(root, "main", "design.md")
+	writeFile(t, path, "main design\n")
+	docs, err := listOnDiskCodeSpecs(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := docs[specKey{dir: "main", name: "design.md"}]; got != "main design\n" {
+		t.Fatalf("discovered main design %q", got)
+	}
+	st := &fakeStore{specs: []importedSpec{{dir: "main", name: "design.md", body: "stored design\n"}}}
+	if err := runExport(root, []string{"main", "design.md"}, st, ioDiscard()); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil || string(got) != "stored design\n" {
+		t.Fatalf("exported main design %q, error %v", got, err)
+	}
+}
+
 func TestExportOverwritesExistingFile(t *testing.T) {
 	root := newMetadata(t)
 	path := filepath.Join(root, "coding.md")

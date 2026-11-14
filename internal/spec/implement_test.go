@@ -15,6 +15,7 @@ func TestImplementPromptUsesDatabaseBodies(t *testing.T) {
 	writeFile(t, filepath.Join(root, "schemas", "notes.txt"), "skip\n")
 
 	st := &fakeStore{specs: []importedSpec{
+		{dir: "main", name: "design.md", body: "main design from db\n"},
 		{dir: "subcommands/spec", name: "design.md", body: "spec design from db\n"},
 		{dir: "subcommands/spec/subcommands/implement/subcommands/prompt", name: "cmd.md", body: "prompt from db\n"},
 		{dir: "", name: "coding.md", body: "coding from db\n"},
@@ -32,6 +33,8 @@ func TestImplementPromptUsesDatabaseBodies(t *testing.T) {
 	for _, want := range []string{
 		"----- SPEC .4sight/coding.md -----",
 		"coding from db",
+		"----- SPEC .4sight/main/design.md -----",
+		"main design from db",
 		"----- SPEC .4sight/subcommands/spec/design.md -----",
 		"spec design from db",
 		"----- SPEC .4sight/subcommands/spec/subcommands/implement/subcommands/prompt/cmd.md -----",
