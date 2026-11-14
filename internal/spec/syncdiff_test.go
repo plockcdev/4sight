@@ -32,7 +32,7 @@ func TestSyncDiffShowsDifferences(t *testing.T) {
 	if !strings.Contains(got, "-db spec") || !strings.Contains(got, "+disk spec") {
 		t.Fatalf("missing spec body diff: %q", got)
 	}
-	if !strings.Contains(got, "--- .4sight/subcommands/migrate/design.md") {
+	if !strings.Contains(got, "+++ .4sight/subcommands/migrate/design.md") {
 		t.Fatalf("missing disk-only diff: %q", got)
 	}
 	if !strings.Contains(got, "+only disk") {

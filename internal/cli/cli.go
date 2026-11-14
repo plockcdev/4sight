@@ -27,14 +27,25 @@ type deps struct {
 	specChangeReviewPrompt       func(cwd string) error
 	specChangeReviewResponse     func(cwd, changeID string) error
 	specChangeReviewShow         func(cwd, changeID string) error
+	specChangeReviewList         func(cwd, changeID string) error
 	specChangeAuthorPrompt       func(cwd string) error
 	specChangeBody               func(cwd, changeID string, locator []string) error
 	init                         func(cwd string) error
 }
 
 func Run(args []string) int {
+	getwd := os.Getwd
+	if len(args) > 0 && (args[0] == "spec" || (args[0] == "migrate" && len(args) > 1 && args[1] == "up")) {
+		getwd = func() (string, error) {
+			cwd, err := os.Getwd()
+			if err == nil {
+				err = initcmd.Preflight(cwd)
+			}
+			return cwd, err
+		}
+	}
 	return run(args, deps{
-		getwd:                        os.Getwd,
+		getwd:                        getwd,
 		up:                           migrate.Up,
 		implementPrompt:              migrate.ImplementPrompt,
 		specExport:                   spec.Export,
@@ -50,6 +61,7 @@ func Run(args []string) int {
 		specChangeReviewPrompt:       spec.ChangeReviewAgentPrompt,
 		specChangeReviewResponse:     spec.ChangeReviewAgentResponse,
 		specChangeReviewShow:         spec.ChangeReviewShow,
+		specChangeReviewList:         spec.ChangeReviewList,
 		specChangeAuthorPrompt:       spec.ChangeAuthorAgentPrompt,
 		specChangeBody:               spec.ChangeBody,
 		init:                         initcmd.Run,
@@ -174,6 +186,9 @@ func runHelpTopic(topic []string) int {
 		return 0
 	case "spec change review agent response":
 		printSpecChangeReviewResponseHelp()
+		return 0
+	case "spec change review list":
+		fmt.Print("4sight spec change review list [change-id]\n")
 		return 0
 	case "spec change review show":
 		printSpecChangeReviewShowHelp()
@@ -601,8 +616,26 @@ func parseSpecChangeReview(args []string, d deps) int {
 		return 0
 	case "agent":
 		return parseSpecChangeReviewAgent(args[1:], d)
-	case "show":
+	case "list":
 		if len(args) > 2 {
+			fmt.Fprintln(os.Stderr, "too many arguments")
+			return 1
+		}
+		cwd, err := d.getwd()
+		if err != nil {
+			return 1
+		}
+		id := ""
+		if len(args) == 2 {
+			id = args[1]
+		}
+		if err := d.specChangeReviewList(cwd, id); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
+	case "show":
+		if len(args) > 3 {
 			printSpecChangeReviewShowHelp()
 			return 1
 		}
@@ -616,8 +649,8 @@ func parseSpecChangeReview(args []string, d deps) int {
 			return 1
 		}
 		changeID := ""
-		if len(args) == 2 {
-			changeID = args[1]
+		if len(args) >= 2 {
+			changeID = strings.Join(args[1:], " ")
 		}
 		if err := d.specChangeReviewShow(cwd, changeID); err != nil {
 			fmt.Fprintln(os.Stderr, "4sight spec change review show:", err)
@@ -1084,7 +1117,7 @@ Options:
 }
 
 func printSpecChangeReviewHelp() {
-	fmt.Print("4sight spec change review\n\nCommands:\n  agent             Generate or submit an agent review\n  show [change-id]  Display a saved review\n\n")
+	fmt.Print("4sight spec change review\n\nCommands:\n  agent             Generate or submit an agent review\n  list [change-id]  List reviews\n  show [change-id] [attempt]  Display a saved review\n\n")
 }
 func printSpecChangeReviewAgentHelp() {
 	fmt.Print("4sight spec change review agent\n\nCommands:\n  prompt            Output review instructions\n  response <change-id>  Read and persist a JSON review from stdin for the latest workspace change\n\n")
@@ -1096,7 +1129,7 @@ func printSpecChangeReviewResponseHelp() {
 	fmt.Print("4sight spec change review agent response <change-id>\n\nRead one JSON review from stdin and persist it for the latest workspace change.\n\n")
 }
 func printSpecChangeReviewShowHelp() {
-	fmt.Print("4sight spec change review show [change-id]\n\nDisplay a saved review for the specified change, or the current workspace change when omitted.\n\n")
+	fmt.Print("4sight spec change review show [change-id] [attempt]\n\nDisplay a saved review for the specified change, or the current workspace change when omitted.\n\n")
 }
 
 func printSpecExportHelp() {

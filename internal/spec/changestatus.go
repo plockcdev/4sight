@@ -30,7 +30,7 @@ func runChangeList(st *doltStore, out io.Writer) error {
 		return fmt.Errorf("current change pointers are not initialized")
 	}
 	submitted, implemented := pointers[0][0], pointers[0][1]
-	rows, err := st.queryCSV("SELECT c.id, COALESCE(cr.summary, 'no summary yet') FROM spec.changes c LEFT JOIN spec.change_review cr ON cr.change_id = c.id ORDER BY c.created_at ASC, c.id ASC")
+	rows, err := st.queryCSV("SELECT c.id, COALESCE(cr.summary, 'no summary yet') FROM spec.changes c LEFT JOIN spec.change_review cr ON cr.change_id = c.id AND cr.attempt = (SELECT MAX(r2.attempt) FROM spec.change_review r2 WHERE r2.change_id=c.id) ORDER BY c.created_at ASC, c.id ASC")
 	if err != nil {
 		return fmt.Errorf("list changes: %w", err)
 	}

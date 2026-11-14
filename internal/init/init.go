@@ -43,13 +43,23 @@ func run(cwd string, source fs.FS, stdout interface{ Write([]byte) (int, error) 
 	}
 
 	metadata := filepath.Join(root, ".4sight")
+	database := filepath.Join(metadata, "db")
+	entries, err := os.ReadDir(database)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("inspect database location %s: %w", database, err)
+	}
+	newDatabase := len(entries) == 0
+	if !newDatabase {
+		if err := preflightDatabase(database); err != nil {
+			return fmt.Errorf("existing database location %s: %w; initialization requires an empty database location", database, err)
+		}
+	}
 	if err := os.MkdirAll(metadata, 0o755); err != nil {
 		return fmt.Errorf("create %s: %w", metadata, err)
 	}
 	if err := ensureGitignoreEntry(root, ".4sight/changes"); err != nil {
 		return err
 	}
-	database := filepath.Join(metadata, "db")
 	if err := os.MkdirAll(database, 0o755); err != nil {
 		return fmt.Errorf("create %s: %w", database, err)
 	}
@@ -62,8 +72,10 @@ func run(cwd string, source fs.FS, stdout interface{ Write([]byte) (int, error) 
 	} else if err != nil {
 		return fmt.Errorf("check Dolt repository %s: %w", database, err)
 	}
-	if err := bootstrapDatabases(database, embedded, time.Now); err != nil {
-		return err
+	if newDatabase {
+		if err := bootstrapDatabases(database, embedded, time.Now); err != nil {
+			return err
+		}
 	}
 
 	rootAsset, err := fs.ReadFile(source, "assets/root_AGENTS.md")
@@ -111,7 +123,7 @@ func run(cwd string, source fs.FS, stdout interface{ Write([]byte) (int, error) 
 	if err != nil {
 		return fmt.Errorf("read workspace spec change after bootstrap: %w", err)
 	}
-	if len(workspaceRows) == 1 && len(workspaceRows[0]) > 0 && workspaceRows[0][0] == "ch-000" {
+	if newDatabase || (len(workspaceRows) == 1 && len(workspaceRows[0]) > 0 && workspaceRows[0][0] == "ch-000") {
 		if err := spec.ChangeImport(root); err != nil {
 			return fmt.Errorf("import initialized specs: %w", err)
 		}

@@ -20,7 +20,7 @@ var helpTopics = map[string]bool{
 	"spec change implement": true, "spec change implement agent": true,
 	"spec change implement agent done": true, "spec change review": true,
 	"spec change review agent": true, "spec change review agent prompt": true,
-	"spec change review agent response": true, "spec change review show": true,
+	"spec change review agent response": true, "spec change review show": true, "spec change review list": true,
 	"spec change author": true, "spec change author agent": true,
 	"spec change author agent prompt": true,
 	"spec change body":                true,
@@ -36,7 +36,7 @@ var usageCommands = map[string]bool{
 	"spec change implement": true, "spec change implement agent": true,
 	"spec change implement agent done": true, "spec change review": true,
 	"spec change review agent": true, "spec change review agent prompt": true,
-	"spec change review agent response": true, "spec change review show": true,
+	"spec change review agent response": true, "spec change review show": true, "spec change review list": true,
 	"spec change author": true, "spec change author agent": true,
 	"spec change author agent prompt": true,
 	"spec change body":                true,
@@ -51,8 +51,8 @@ var plainUsageCommands = map[string]bool{
 	"spec change implement agent": true, "spec change implement agent done": true,
 	"spec change review": true, "spec change review agent": true,
 	"spec change review agent prompt": true, "spec change review agent response": true,
-	"spec change review show": true,
-	"spec change author":      true, "spec change author agent": true,
+	"spec change review show": true, "spec change review list": true,
+	"spec change author": true, "spec change author agent": true,
 	"spec change author agent prompt": true, "spec change body": true,
 }
 

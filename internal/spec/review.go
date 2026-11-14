@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -47,11 +48,81 @@ func ChangeReviewShow(cwd, changeID string) error {
 	return runChangeReviewShow(newDoltStore(filepath.Join(root, "db")), changeID, os.Stdout)
 }
 
+func ChangeReviewList(cwd, changeID string) error {
+	root, err := findMetadataRoot(cwd)
+	if err != nil {
+		return err
+	}
+	return runChangeReviewList(newDoltStore(filepath.Join(root, "db")), changeID, os.Stdout)
+}
+
+func runChangeReviewList(st *doltStore, changeID string, out io.Writer) error {
+	if changeID != "" {
+		exists, err := st.queryCSV("SELECT id FROM spec.changes WHERE id=" + sqlString(changeID))
+		if err != nil {
+			return err
+		}
+		if len(exists) == 0 {
+			return fmt.Errorf("change %s does not exist", changeID)
+		}
+		rows, err := st.queryCSV("SELECT attempt,summary,ready FROM spec.change_review WHERE change_id=" + sqlString(changeID) + " ORDER BY attempt")
+		if err != nil {
+			return err
+		}
+		if len(rows) == 0 {
+			return fmt.Errorf("no review is available for change %s", changeID)
+		}
+		for _, r := range rows {
+			if _, err := fmt.Fprintf(out, "Attempt %s: %s (ready: %s)\n", r[0], r[1], r[2]); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	rows, err := st.queryCSV("SELECT c.id,r.summary,(SELECT COUNT(*) FROM spec.change_review x WHERE x.change_id=c.id) FROM spec.changes c JOIN spec.change_review r ON r.change_id=c.id AND r.attempt=(SELECT MAX(x.attempt) FROM spec.change_review x WHERE x.change_id=c.id) ORDER BY c.created_at,c.id")
+	if err != nil {
+		return err
+	}
+	for _, r := range rows {
+		if _, err := fmt.Fprintf(out, "%s: %s", r[0], r[1]); err != nil {
+			return err
+		}
+		if r[2] != "1" {
+			if _, err := fmt.Fprintf(out, " (%s attempts)", r[2]); err != nil {
+				return err
+			}
+		}
+		if _, err := fmt.Fprintln(out); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 type changeReviewFileReport struct {
 	Path, Why, Summary, Description, Details, BodySummary string
 }
 
 func runChangeReviewShow(st *doltStore, changeID string, out io.Writer) error {
+	parts := strings.Fields(changeID)
+	attempt := ""
+	changeID = ""
+	if len(parts) > 0 {
+		if _, err := strconv.Atoi(parts[0]); err == nil {
+			attempt = parts[0]
+		} else {
+			changeID = parts[0]
+		}
+	}
+	if len(parts) > 1 {
+		attempt = parts[1]
+	}
+	if attempt != "" {
+		n, err := strconv.Atoi(attempt)
+		if err != nil || n < 1 {
+			return fmt.Errorf("attempt must be a positive integer")
+		}
+	}
 	if changeID == "" {
 		state, err := st.reviewState()
 		if err != nil {
@@ -66,17 +137,25 @@ func runChangeReviewShow(st *doltStore, changeID string, out io.Writer) error {
 	if len(exists) == 0 {
 		return fmt.Errorf("change %s does not exist", changeID)
 	}
-	reviews, err := st.queryCSV("SELECT why,summary,description,details,review,ready FROM spec.change_review WHERE change_id=" + sqlString(changeID))
+	query := "SELECT why,summary,description,details,review,ready,attempt,id FROM spec.change_review WHERE change_id=" + sqlString(changeID)
+	if attempt != "" {
+		query += " AND attempt=" + attempt
+	}
+	query += " ORDER BY attempt DESC LIMIT 1"
+	reviews, err := st.queryCSV(query)
 	if err != nil {
 		return fmt.Errorf("look up review for change %s: %w", changeID, err)
 	}
 	if len(reviews) == 0 {
+		if attempt != "" {
+			return fmt.Errorf("no such review attempt %s is available for change %s", attempt, changeID)
+		}
 		return fmt.Errorf("no review is available for change %s", changeID)
 	}
 	if len(reviews[0]) < 6 {
 		return fmt.Errorf("incomplete review data for change %s", changeID)
 	}
-	rows, err := st.queryCSV("SELECT d.path,p.name,r.why,r.summary,r.description,r.details,r.body_summary FROM spec.file_change_reviews r JOIN spec.change_review cr ON cr.id=r.change_review_id JOIN spec.file_changes fc ON fc.id=r.file_change_id JOIN spec.filepaths p ON p.id=fc.filepath_id JOIN spec.dirs d ON d.id=p.dir_id WHERE cr.change_id=" + sqlString(changeID))
+	rows, err := st.queryCSV("SELECT d.path,p.name,r.why,r.summary,r.description,r.details,r.body_summary FROM spec.file_change_reviews r JOIN spec.change_review cr ON cr.id=r.change_review_id JOIN spec.file_changes fc ON fc.id=r.file_change_id JOIN spec.filepaths p ON p.id=fc.filepath_id JOIN spec.dirs d ON d.id=p.dir_id WHERE cr.id=" + reviews[0][7])
 	if err != nil {
 		return fmt.Errorf("look up file reviews for change %s: %w", changeID, err)
 	}
@@ -96,7 +175,7 @@ func runChangeReviewShow(st *doltStore, changeID string, out io.Writer) error {
 	}
 	slices.SortFunc(files, func(a, b changeReviewFileReport) int { return strings.Compare(a.Path, b.Path) })
 	ready := reviews[0][5] == "1" || strings.EqualFold(reviews[0][5], "true")
-	if _, err := fmt.Fprintf(out, "Change ID: %s\n\nOverall review:\n", changeID); err != nil {
+	if _, err := fmt.Fprintf(out, "Change ID: %s\nReview attempt: %s\n\nOverall review:\n", changeID, reviews[0][6]); err != nil {
 		return err
 	}
 	overallFields := [][2]string{
@@ -173,11 +252,20 @@ func runChangeReviewPrompt(root string, st *doltStore, out io.Writer) error {
 		_, err = fmt.Fprintf(out, "%sRun `4sight spec change author agent prompt` to author the requested spec changes, then import them before reviewing.\n", meta)
 		return err
 	}
+	reviews, err := st.queryCSV("SELECT COALESCE(MAX(attempt),0) FROM spec.change_review WHERE change_id=" + sqlString(state.Workspace))
+	if err != nil {
+		return err
+	}
+	n, err := strconv.Atoi(reviews[0][0])
+	if err != nil {
+		return err
+	}
+	meta += fmt.Sprintf("Next review attempt: %d\nIf a review already exists, proceed only for an explicitly requested re-review; otherwise ask the user to request a re-review. Include the user’s new context and preserve earlier attempts.\n", n+1)
 	unreviewedPaths, err := st.unreviewedPaths(state.Submitted, state.Workspace)
 	if err != nil {
 		return err
 	}
-	if state.Prompt == "" && len(unreviewedPaths) == 0 {
+	if state.Prompt == "" && len(unreviewedPaths) == 0 && n == 0 {
 		_, err = fmt.Fprintln(out, meta+"There is nothing to review.")
 		return err
 	}
@@ -334,7 +422,11 @@ func ChangeReviewAgentResponse(cwd, changeID string) error {
 	if err := runChangeReviewResponse(root, st, changeID, response); err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(os.Stdout, "Saved review for change %s.\n", changeID)
+	rows, err := st.queryCSV("SELECT MAX(attempt) FROM spec.change_review WHERE change_id=" + sqlString(changeID))
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(os.Stdout, "Saved review for change %s, attempt %s.\n", changeID, rows[0][0])
 	return err
 }
 
@@ -443,13 +535,6 @@ func runChangeReviewResponse(root string, st *doltStore, changeID string, r revi
 	if state.Workspace != changeID {
 		return fmt.Errorf("change ID %s is not the latest workspace change %s; submit reviews only for the current workspace change", changeID, state.Workspace)
 	}
-	exists, err := st.queryCSV("SELECT id FROM spec.change_review WHERE change_id = " + sqlString(state.Workspace))
-	if err != nil {
-		return err
-	}
-	if len(exists) > 0 {
-		return fmt.Errorf("workspace change %s already has a review; submit a new request prompt or import a spec change to create a new workspace change", state.Workspace)
-	}
 	bad, err := st.workspaceSyncProblems(root)
 	if err != nil {
 		return err
@@ -498,13 +583,9 @@ func runChangeReviewResponse(root string, st *doltStore, changeID string, r revi
 	}
 	var tx strings.Builder
 	tx.WriteString("START TRANSACTION;\n")
-	fmt.Fprintf(&tx, "INSERT INTO spec.change_review (name,change_id,why,summary,description,details,ready,review) SELECT %s,%s,%s,%s,%s,%s,%d,%s FROM spec.current_changes WHERE singleton=1 AND workspace_change_id=%s;\n", sqlString(changeName), sqlString(changeID), sqlBodyLiteral(r.Why), sqlBodyLiteral(r.Summary), sqlBodyLiteral(r.Description), sqlBodyLiteral(r.Details), ready, sqlBodyLiteral(r.Review), sqlString(changeID))
+	fmt.Fprintf(&tx, "INSERT INTO spec.change_review (name,change_id,attempt,why,summary,description,details,ready,review) SELECT %s,%s,(SELECT COALESCE(MAX(attempt),0)+1 FROM spec.change_review WHERE change_id=%s),%s,%s,%s,%s,%d,%s FROM spec.current_changes WHERE singleton=1 AND workspace_change_id=%s;\n", sqlString(changeName), sqlString(changeID), sqlString(changeID), sqlBodyLiteral(r.Why), sqlBodyLiteral(r.Summary), sqlBodyLiteral(r.Description), sqlBodyLiteral(r.Details), ready, sqlBodyLiteral(r.Review), sqlString(changeID))
 	for _, file := range resolved {
-		if file.ExistingReviewID != "" {
-			fmt.Fprintf(&tx, "UPDATE spec.file_change_reviews SET file_change_id=%s,change_review_id=(SELECT id FROM spec.change_review WHERE change_id=%s),why=%s,summary=%s,body_summary=%s,description=%s,details=%s WHERE id=%s;\n", file.FileChangeID, sqlString(changeID), sqlBodyLiteral(file.Review.Why), sqlBodyLiteral(file.Review.Summary), sqlBodyLiteral(file.Review.BodySummary), sqlBodyLiteral(file.Review.Description), sqlBodyLiteral(file.Review.Details), file.ExistingReviewID)
-		} else {
-			fmt.Fprintf(&tx, "INSERT INTO spec.file_change_reviews (file_change_id,change_review_id,why,summary,body_summary,description,details) VALUES (%s,(SELECT id FROM spec.change_review WHERE change_id=%s),%s,%s,%s,%s,%s);\n", file.FileChangeID, sqlString(changeID), sqlBodyLiteral(file.Review.Why), sqlBodyLiteral(file.Review.Summary), sqlBodyLiteral(file.Review.BodySummary), sqlBodyLiteral(file.Review.Description), sqlBodyLiteral(file.Review.Details))
-		}
+		fmt.Fprintf(&tx, "INSERT INTO spec.file_change_reviews (file_change_id,change_review_id,why,summary,body_summary,description,details) VALUES (%s,(SELECT id FROM spec.change_review WHERE name=%s),%s,%s,%s,%s,%s);\n", file.FileChangeID, sqlString(changeName), sqlBodyLiteral(file.Review.Why), sqlBodyLiteral(file.Review.Summary), sqlBodyLiteral(file.Review.BodySummary), sqlBodyLiteral(file.Review.Description), sqlBodyLiteral(file.Review.Details))
 		fmt.Fprintf(&tx, "UPDATE spec.bodies SET summary=%s WHERE file_id=%s AND state='workspace';\n", sqlBodyLiteral(file.Review.BodySummary), file.FileID)
 	}
 	tx.WriteString("COMMIT;")

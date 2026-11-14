@@ -1,0 +1,1 @@
+Run `4sight spec change review list` to list reviews, or pass a change ID to list its attempts.

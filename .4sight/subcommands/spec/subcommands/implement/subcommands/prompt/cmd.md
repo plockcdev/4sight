@@ -102,5 +102,10 @@ Embed the usage docs into the application
 
 ## Completing Implmentation
 
+At the end of implementation, instruct the agent to ensure that each current
+4sight internal database migration ID is built into the binary as an embedded
+string available to the shared startup check, and that the embedded migration
+chains include all migrations through those IDs.
+
 After successfully implementing the submitted change, instruct the agent to run
 `4sight spec change implement agent done` to mark the implementation complete.

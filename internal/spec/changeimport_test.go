@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"hash/crc32"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -219,12 +220,13 @@ func TestChangeImportDolt(t *testing.T) {
 	}
 
 	bodies, err := store.queryCSV(
-		"SELECT d.path, f.name, b.body, b.summary, b.state, b.ieee_crc32, fc.change_id " +
+		"SELECT d.path, p.name, b.body, b.summary, b.state, b.ieee_crc32, fc.change_id " +
 			"FROM spec.bodies b " +
 			"JOIN spec.files f ON f.id = b.file_id " +
-			"JOIN spec.dirs d ON d.id = f.dir_id " +
 			"JOIN spec.file_changes fc ON fc.id = b.file_change_id " +
-			"ORDER BY d.path, f.name, b.state",
+			"JOIN spec.filepaths p ON p.id = fc.filepath_id " +
+			"JOIN spec.dirs d ON d.id = p.dir_id " +
+			"ORDER BY d.path, p.name, b.state",
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -279,8 +281,9 @@ func TestChangeImportDolt(t *testing.T) {
 		"SELECT b.body, fc.change_id FROM spec.bodies b " +
 			"JOIN spec.file_changes fc ON fc.id = b.file_change_id " +
 			"JOIN spec.files f ON f.id = b.file_id " +
-			"JOIN spec.dirs d ON d.id = f.dir_id " +
-			"WHERE d.path = 'schemas' AND f.name = 'dolt_spec.md' AND b.state = 'workspace'",
+			"JOIN spec.filepaths p ON p.id = fc.filepath_id " +
+			"JOIN spec.dirs d ON d.id = p.dir_id " +
+			"WHERE d.path = 'schemas' AND p.name = 'dolt_spec.md' AND b.state = 'workspace'",
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -350,78 +353,23 @@ func setupChangeImportDB(t *testing.T, root string) *doltStore {
 		t.Fatalf("dolt init: %s: %v", out, err)
 	}
 	store := newDoltStore(dbDir)
-	for _, stmt := range []string{
-		"CREATE DATABASE spec",
-		`CREATE TABLE spec.changes (
-  id CHAR(6) NOT NULL,
-  prompt TEXT NOT NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (id),
-  CONSTRAINT changes_id_chk CHECK (regexp_like(id, '^ch-[0-9a-z]{3}$'))
-)`,
-		"INSERT INTO spec.changes (id, prompt) VALUES ('ch-000', '')",
-		`CREATE TABLE spec.changes_closure (
-  parent_id CHAR(6) NOT NULL,
-  child_id CHAR(6) NOT NULL,
-  depth INT UNSIGNED NOT NULL,
-  PRIMARY KEY (parent_id, child_id),
-  CONSTRAINT fk_changes_closure_parent_id FOREIGN KEY (parent_id) REFERENCES spec.changes (id),
-  CONSTRAINT fk_changes_closure_child_id FOREIGN KEY (child_id) REFERENCES spec.changes (id)
-)`,
-		"INSERT INTO spec.changes_closure (parent_id, child_id, depth) VALUES ('ch-000', 'ch-000', 0)",
-		`CREATE TABLE spec.current_changes (
-  singleton TINYINT NOT NULL DEFAULT 1,
-  implemented_change_id CHAR(6) NOT NULL,
-  submitted_change_id CHAR(6) NOT NULL,
-  workspace_change_id CHAR(6) NOT NULL,
-  PRIMARY KEY (singleton),
-  CONSTRAINT current_changes_singleton_chk CHECK (singleton = 1),
-  CONSTRAINT fk_current_changes_implemented_change_id FOREIGN KEY (implemented_change_id) REFERENCES spec.changes (id),
-  CONSTRAINT fk_current_changes_submitted_change_id FOREIGN KEY (submitted_change_id) REFERENCES spec.changes (id),
-  CONSTRAINT fk_current_changes_workspace_change_id FOREIGN KEY (workspace_change_id) REFERENCES spec.changes (id)
-)`,
-		"INSERT INTO spec.current_changes (implemented_change_id, submitted_change_id, workspace_change_id) VALUES ('ch-000', 'ch-000', 'ch-000')",
-		`CREATE TABLE spec.dirs (
-  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  path VARCHAR(255) NOT NULL,
-  UNIQUE KEY path (path),
-  CONSTRAINT dirs_path_chk CHECK (path = '' OR regexp_like(path, '^[a-z0-9]([a-z0-9.-]*(/[a-z0-9.-]+)*)?$'))
-)`,
-		`CREATE TABLE spec.files (
-  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  dir_id BIGINT UNSIGNED NOT NULL,
-  name VARCHAR(255) NOT NULL,
-  UNIQUE KEY dir_name (dir_id, name),
-  CONSTRAINT fk_files_dir_id FOREIGN KEY (dir_id) REFERENCES spec.dirs (id),
-  CONSTRAINT files_name_chk CHECK (regexp_like(name, '^[a-z0-9][a-z0-9._-]*$'))
-)`,
-		`CREATE TABLE spec.file_changes (
-  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  change_id CHAR(6) NOT NULL,
-  file_id BIGINT UNSIGNED NOT NULL,
-  diff TEXT NOT NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY file_changes_change_file_uniq (change_id, file_id),
-  CONSTRAINT fk_file_changes_change_id FOREIGN KEY (change_id) REFERENCES spec.changes (id),
-  CONSTRAINT fk_file_changes_file_id FOREIGN KEY (file_id) REFERENCES spec.files (id)
-)`,
-		`CREATE TABLE spec.bodies (
-  body TEXT NOT NULL,
-  file_id BIGINT UNSIGNED NOT NULL,
-  file_change_id BIGINT UNSIGNED NOT NULL,
-  state VARCHAR(32) NOT NULL,
-  ieee_crc32 INT UNSIGNED NOT NULL,
-  summary VARCHAR(65) NOT NULL,
-  UNIQUE KEY bodies_file_state_uniq (file_id, state),
-  CONSTRAINT fk_bodies_file_id FOREIGN KEY (file_id) REFERENCES spec.files (id),
-  CONSTRAINT fk_bodies_file_change_id FOREIGN KEY (file_change_id) REFERENCES spec.file_changes (id),
-  CONSTRAINT bodies_state_chk CHECK (state IN ('implemented', 'submitted', 'workspace'))
-)`,
-	} {
-		if err := store.run("sql", "-q", stmt); err != nil {
+	migrations, err := filepath.Glob(filepath.Join("..", "..", ".4sight", "migrations", "dolt_spec", "*.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(migrations) == 0 {
+		t.Fatal("no spec migrations found")
+	}
+	for _, path := range migrations {
+		sql, err := os.ReadFile(path)
+		if err != nil {
 			t.Fatal(err)
 		}
+		if err := store.run("sql", "-q", string(sql)); err != nil {
+			t.Fatalf("apply %s: %v", path, err)
+		}
 	}
+
 	return store
 }
 
@@ -436,8 +384,8 @@ func seedWorkspaceBody(t *testing.T, store *doltStore, dir, name, body string) {
 		t.Fatal(err)
 	}
 	if err := store.run("sql", "-q", fmt.Sprintf(
-		"INSERT INTO spec.file_changes (change_id, file_id, diff) VALUES ('ch-000', %d, %s)",
-		fileID, sqlBodyLiteral(unifiedDiff("", body)),
+		"INSERT INTO spec.file_changes (change_id, file_id, filepath_id, diff) SELECT 'ch-000', %d, current_filepath_id, %s FROM spec.files WHERE id = %d",
+		fileID, sqlBodyLiteral(unifiedDiff("", body)), fileID,
 	)); err != nil {
 		t.Fatal(err)
 	}

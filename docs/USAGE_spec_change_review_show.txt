@@ -1,1 +1,1 @@
-Run `4sight spec change review show` to show the current workspace review, or pass a change ID.
+Run `4sight spec change review show` to see the latest review; pass a change ID and/or attempt number to select another review.

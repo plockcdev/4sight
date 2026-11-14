@@ -43,6 +43,14 @@ pointer. Do not copy migrations after that pointer. Do not use the source repo's
 
 ## Runtime spec database bootstrap
 
+Before changing any files or databases, inspect the target `.4sight/db` location.
+If it is absent or an empty directory, bootstrap both internal databases below.
+If it is nonempty, do not recreate missing databases or tracking tables: run the
+shared preflight, and fail before making changes if either is missing. Report
+the location and explain that initialization requires an empty database location.
+For an existing initialized project, run the shared preflight before accessing
+its internal databases.
+
 When a user runs `4sight init`, initialize 4sight's internal spec database in
 the target repo's `.4sight/db`:
 
@@ -91,8 +99,12 @@ if .4sight/coding.md does not exist, create it, otherwise leave alone
 
 ## Import Specs
 
-If the workspace change is at ch-000, then init runs `4sight spec change import`
-to pick up the initialized spec files
+After bootstrapping a new database, import any existing supported specification
+files and tracked text assets from disk using `4sight spec change import`, so
+the workspace database reflects them. This recreates the current workspace from
+the files; previous database history cannot be recovered by the import. For an
+existing database, if the workspace change is at ch-000, run the import to pick
+up initialized spec files.
 
 ## Commit initialized files
 
