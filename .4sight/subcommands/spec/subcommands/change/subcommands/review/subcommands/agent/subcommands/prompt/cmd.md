@@ -4,6 +4,13 @@ Overview: It is expected that an agent will call this command, read the output,
 and follow the output instructions as a prompt. This commands intent is to have
 the agent review the workspace change for quality.
 
+If the current workspace change already has a review, an ordinary review
+request must stop and tell the user that a review already exists, asking them
+to explicitly request a re-review. For an explicit re-review request, continue
+even when a review exists, include the user's new information about the prior
+review or discovered mistake in the review context, and identify the next
+attempt number. Do not alter prior attempts.
+
 Review the specifications for clarity, completeness, and consistency. They
 describe intended behavior, which may not yet be implemented; do not treat
 missing or incomplete code implementation as a specification defect.
@@ -39,8 +46,10 @@ If the change prompt is non-empty, tell the user to run
 `4sight spec change author agent prompt` to author the requested spec changes,
 then stop. This command is review-only.
 
-If the current workspace change pointer has no file changes missing reviews,
-then tell the user there is nothing to review and stop.
+For an explicit re-review, do not stop merely because all changed files already
+have reviews. Determine the next attempt number for this change and review the
+full change again. For a first review, if the current workspace pointer has no
+file changes missing reviews, tell the user there is nothing to review and stop.
 
 ## Render meta info
 

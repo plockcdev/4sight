@@ -25,13 +25,21 @@ Check for response errors, if there is one, stop, tell user how to remediate.
 - each file submitted must exist in filesystem and match the persisted body text
 
 Populate a new change review for the supplied change ID, after verifying it is
-the current workspace change.
+the current workspace change. Assign attempt 1 if this is the first review for
+the change; otherwise assign the next consecutive attempt number. Never update
+or replace an earlier overall review.
+
+The command assigns attempt 1 when no review exists, or exactly one greater
+than the latest saved attempt when re-reviewing. Do not require the agent to
+include a database-assigned attempt number in the JSON review object.
 
 For each file change corrsponding to each review incoming, it may or may not
 have a review already.
 
 - with no review - create file change review
-- with a review - update the review fields from incoming to replace the old review and update file change to the workspace change pointer's file change or latest for its ancestry
+- with a review for this file change in an earlier attempt - create a new file
+  change review linked to the new overall review; do not replace the earlier
+  file review
 
 For each file change review in response, update related file's body's body
 summary for the workspace state, replacing the stale summary with one that has
@@ -41,9 +49,9 @@ Db links should be written by this command, the agent shouldn't have to see
 internal ids as paths should be sufficient to identify db objects as we know the
 workspace change pointer.
 
-If the current workspace pointer already has a change review, tell agent to
-stop, and have it tell the user how to submit a request or import a spec change
-to allow a review.
+An existing review for the current workspace change is allowed when the agent
+is following the prompt for an explicitly requested re-review. Persist it as
+the next attempt without changing earlier attempts.
 
 Read the response data through stdin (if 1 second passes waiting for data before
 EOF, error out, and indicate the submission requirement)
@@ -64,6 +72,6 @@ matching workspace body summary.
 
 For each path changed between the submitted and workspace pointers, select the
 latest file_change for that path in that pointer range and require exactly one
-review linked to that file_change. Reject duplicate reviews, missing reviews,
-and reviews linked to file changes outside the range. Print a success message
-identifying the reviewed change after commit.
+review linked to that file_change for this attempt. Reject duplicate reviews,
+missing reviews, and reviews linked to file changes outside the range. Print a
+success message identifying the reviewed change and attempt after commit.

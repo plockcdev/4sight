@@ -79,6 +79,11 @@ update code to work with the pending schema until current matches submitted.
 When the user requests a spec review, run `4sight spec change review agent
 prompt` and follow the instructions
 
+If the current workspace change already has a review and the user asks for a
+review, stop and tell them a review already exists. Ask them to request a
+re-review explicitly. When they request a re-review, run `4sight spec change
+review agent prompt` and follow the instructions for a new numbered attempt.
+
 # Handling spec change requests
 
 Before handling a spec change request, check for un-imported spec changes. If

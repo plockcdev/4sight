@@ -1,16 +1,22 @@
-# 4sight spec change review show `[change-id]`
+# 4sight spec change review show `[change-id]` `[attempt]`
 
 Displays a saved specification change review without modifying the database.
 
-If `change-id` is omitted, use the current workspace change. If it is provided,
-look up the review for exactly that change.
+With no arguments, show the latest review for the current workspace change. A
+single positive integer argument selects that attempt for the current workspace
+change (for example, `show 1`). A change ID selects that change and shows its
+latest review; a change ID followed by a positive integer selects that attempt
+for that change.
 
 If the change ID is unknown, report that the change does not exist. If the change
 exists but has no saved review, report that no review is available for it.
+If the requested attempt does not exist for the change, report that no such
+review attempt is available.
 
 Render a human-readable report with these sections:
 
 - Change ID
+- Review attempt number
 - Overall review: why, summary, description, details, review, and ready
 - File reviews: one entry for every file review linked to that overall review,
   showing the spec path, why, summary, description, details, and body summary

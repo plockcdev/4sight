@@ -66,8 +66,10 @@ A change sequence is the root node path through the tree to any change node.
 
 Captures an agentic review of a change
 
-- change: reference to which change this review is for, only one change_review
-per change
+- change: reference to which change this review is for
+- attempt: positive integer review attempt number, starting at 1 and incrementing
+  by 1 for each later review of the same change; attempt numbers are unique per
+  change and are assigned consecutively
 - why: justification for the change, might be directly provided but also can be
 inferred by agent, must be non-empty
 - summary: 65 character or less summary of the change to distinguish it from
@@ -140,7 +142,9 @@ the current submitted change pointer, semantically
 - body summary: a non-empty snapshot of the associated body summary at review
 time, 65 characters or less
 
-there is at most one file_change_review per file_change
+there is at most one file_change_review for each pair of change_review and
+file_change. The same file change can therefore have a separate file review in
+each review attempt.
 
 The referenced change review and file change must belong to the same change
 sequence, and the file change must be one of the files covered by that change
