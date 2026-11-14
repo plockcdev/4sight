@@ -1,29 +1,47 @@
 # 4sight design
 
-## Internal database startup preflight
+## Command and specification layout
 
-Before a command accesses an initialized project's internal databases, run one
-shared preflight per process. Help and usage, commands outside a project, and
-initial creation by `init` do not require this preflight. An initialized project
-missing either internal database or its tracking tables fails with a diagnostic
-directing the user to `4sight init` for initialization or recovery.
+The CLI supports nested subcommands, each of which may have arguments and flags.
+Command specifications under `.4sight` follow this structure:
 
-The binary embeds the complete ordered migration chains and an expected current
-migration ID string for each internal database: `4sight_migration` and `spec`.
-Compare the actual recorded migration history with those chains. Before any
-mutation, validate both embedded chains, expected IDs, and both recorded
-histories; each recorded set of IDs must equal the IDs in a complete prefix of
-its parent-linked chain. Timestamps do not determine migration order. Fail
-on unknown, divergent, incomplete, or newer history. Report the database and
-offending migration. Do not infer compatibility by comparing ID strings.
+- `main/` describes the command invoked without a subcommand.
+- `subcommands/<name>/` describes a named subcommand and may contain its own
+  `subcommands/` directory for nested subcommands. A subcommand exists only if
+  its directory has a `cmd.md`.
+- `schemas/` contains database schema specifications, such as
+  `dolt_myapp.md` for the current specification of a Dolt database.
 
-Apply missing embedded migrations in order, first for `4sight_migration`, then
-for `spec`, recording each successful migration. Stop on failure, report the
-database and migration, and do not run the requested command. Prevent concurrent
-preflights from applying migrations to the same project simultaneously. Use
-atomic migration and tracking updates where supported; otherwise report that a
-failed migration may require repair before retrying. Preflight does not inspect
-or migrate application databases.
+Database schema specifications are the authoritative description of persisted
+data: its structure and DDL requirements, meaning and intended use, relationships,
+and constraints. Include constraints even when the database cannot enforce them;
+the application must enforce any such constraints that apply to its operations.
+Schema specs describe the logical model and requirements; SQL DDL is produced in
+migration files. See `.4sight/subcommands/migrate/design.md` for how schema
+specifications relate to database migrations.
+
+Code implementation specifications describe the program and its commands. They
+may rely on the schema specifications without restating their data definitions,
+relationships, or constraints. Reviewers and implementers of code specs must
+read and understand the applicable schema specs and ensure the implementation
+satisfies them.
+
+At the top level, `design.md` describes the entire program and `coding.md`
+contains its coding standards. A command directory may contain `design.md` and
+`coding.md`; these are optional. Parent design and coding standards apply along
+the command path. A main design or coding standard applies to the main command,
+but is not inherited by subcommands unless a spec explicitly says so.
+
+A command's `cmd.md` specifies its arguments, environment variables, flags,
+behavior, and output. `design.md` files may describe database usage but must not
+contain SQL DDL or statements.
+
+The `main` locator addresses main command specs in spec commands, for example
+`4sight spec export main cmd.md`. Discover, track, compare, and include them in
+implementation prompts like other code specs.
+
+The shared startup preflight specified in `main/design.md` applies to all
+commands as described there.
 
 ## Agent Prompts and Agent Responses
 
