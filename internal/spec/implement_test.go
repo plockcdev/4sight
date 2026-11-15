@@ -62,14 +62,10 @@ func TestImplementPromptUsesDatabaseBodies(t *testing.T) {
 	if strings.Contains(got, "notes.txt") {
 		t.Fatalf("listed non-md schema: %q", got)
 	}
-	if !strings.Contains(got, "Review the application code specification and update the code to match the spec.") {
-		t.Fatalf("missing review instruction: %q", got)
-	}
-	if !strings.Contains(got, "Do not update the schema.") {
-		t.Fatalf("missing schema restriction: %q", got)
-	}
-	if !strings.Contains(got, "If the schema needs a spec change or a migration to be compatible with the code spec, stop and tell the user the gap") {
-		t.Fatalf("missing schema gap instruction: %q", got)
+	for _, want := range []string{"Compare implemented and submitted spec bodies", "For a full implementation", "For an explicitly code-only request", "For an explicitly schema-only request", "embedded chain"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %q", want)
+		}
 	}
 }
 

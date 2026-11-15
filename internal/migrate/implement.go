@@ -144,7 +144,8 @@ func runImplementPrompt(metadataRoot, schemaRel string, stdout io.Writer, suffix
 	if _, err := fmt.Fprintf(stdout, "- %s -> %s\n", submittedSymlinkDisplay, migrationName); err != nil {
 		return err
 	}
-	return nil
+	_, err = fmt.Fprintln(stdout, "For a schema-only request, report the pending migration and tell the user to run `4sight migrate up`. For a full spec implementation, defer applying it until the final migration step; do not ask the user to run it separately.")
+	return err
 }
 
 func databaseFromSchemaName(name string) (database, error) {

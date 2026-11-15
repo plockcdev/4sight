@@ -47,5 +47,7 @@ spec for the db:
 Tell the agent after writing the migration file, to move submitted to the
 new migration file
 
-Tell the agent to prompt the user to run `4sight migrate up` when they are ready
-to apply changes.
+For a schema-only request, instruct the agent to report the pending migration
+and tell the user how to run `4sight migrate up`. When invoked as part of a full
+spec implementation, defer applying migrations to the full implementation's
+final migration step; do not ask the user to run them separately.

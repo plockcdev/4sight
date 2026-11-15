@@ -28,19 +28,23 @@ Group the schemas by database type:
 {{end}}{{end}}
 {{if .CompositeDiffPath}}Read the composite diff at {{.CompositeDiffPath}} to inspect path changes, deletions, text asset changes, and rename/copy relationship metadata. Text assets are omitted from the spec list; read relevant text asset files from disk.
 {{end}}
-Review the application code specification and update the code to match the spec.
-Do not update the schema.
-If the schema needs a spec change or a migration to be compatible with the code spec, stop and tell the user the gap (schema spec or migration, and what kinds of changes are needed).
+Compare implemented and submitted spec bodies, including schema additions, changes, and deletions, and inspect migration state. Do not edit or import specs. Account for startup preflight: do not run newly built binaries against the working project if they would apply migrations outside the requested scope or before the permitted step. Use isolated test projects as needed; stop if this cannot be done safely.
 
-Check the schema specification and implementation for logic, integrity, and performance problems, mismatches with the code specification, and behavior that cannot be inferred. If a problem prevents safe implementation, stop and report the file, line number, and a search string, then recommend how to resolve it using the 4sight spec or migration commands. Before code that depends on a schema change, verify its current and submitted migration links match; if not, stop and ask the user to run {{.MigrateUpCommand}}.
+Check code and schema specifications and implementation for logic, integrity, performance, mismatches, and ambiguous behavior. If a problem prevents safe implementation, stop and report the file, line number, and a search string, and recommend how to resolve it with 4sight spec or migration commands.
+
+For a full implementation, first run 4sight migrate implement prompt <path relative to schemas dir> for each database whose submitted schema requires a migration and follow it to create and submit the migration. Do not generate migrations for unchanged schemas. If a schema was deleted, or a new database or dependency cannot be handled without changing specs, stop and report the issue. Check migration chains and dependencies and stop if ordering is unsafe. Then update the code; do not apply new migrations before code changes. Use isolated migrated test databases if needed, and stop if a staged rollout is required. After verification, run {{.MigrateUpCommand}} and verify success before running {{.CompleteCommand}}. On failure report partial application and repair needed; do not mark complete. Stop if startup preflight or migration ordering makes this sequence impossible.
+
+For an explicitly code-only request, do not generate or apply migrations. Stop if code depends on a pending migration. After verification, mark complete only if all other required work is already complete; otherwise report the remaining work.
+
+For an explicitly schema-only request, run 4sight migrate implement prompt <path relative to schemas dir> and follow its schema-only instructions. Report the pending migration and how to apply it; do not apply it or mark the change complete.
 
 Remove command implementations whose cmd.md specs no longer exist. Update command routing, help, and usage accordingly.
 
 Update command help when command structure, arguments, options, or flags change. Show help for syntax errors and for --help at any command depth. If help is combined with other arguments, show help and return an error. Help lists commands, options, and arguments, not usage. Semantic errors should explain the problem without help.
 
-Maintain docs/USAGE.txt and docs/USAGE_<subcommand>.txt for every command recursively. Usage is brief practical guidance with examples. {{.UsageCommand}} or {{.UsageFlag}} prints the corresponding usage file; extra arguments are an error and show help.
+Maintain docs/USAGE.txt and docs/USAGE_<subcommand>.txt for every command recursively. Usage is brief practical guidance with examples. Explain design principles and conventions where users need them, in the relevant usage document. {{.UsageCommand}} or {{.UsageFlag}} prints the corresponding usage file; extra arguments are an error and show help.
 
-After successfully implementing the submitted change, run {{.CompleteCommand}} to mark implementation complete.
+Ensure each current internal database migration ID is embedded in the binary and its embedded chain includes all migrations through that ID.
 `
 
 type promptCodeSpec struct {
@@ -113,9 +117,6 @@ func runImplementPrompt(metadataRoot string, st store, stdout io.Writer) error {
 		}
 		if implemented == submitted {
 			_, err := fmt.Fprintf(stdout, "nothing to implement: submitted change %s is already implemented\n", submitted)
-			return err
-		}
-		if err := verifySchemaMigrations(metadataRoot); err != nil {
 			return err
 		}
 		if diffStore, ok := st.(interface {
@@ -233,39 +234,6 @@ func verifyImplementSpecsInSync(root string, bodies []specDoc) error {
 	}
 	slices.Sort(mismatches)
 	return fmt.Errorf("workspace spec files do not match their database bodies:\n- %s", strings.Join(mismatches, "\n- "))
-}
-
-func verifySchemaMigrations(root string) error {
-	schemas, err := listSchemaSpecs(filepath.Join(root, "schemas"))
-	if err != nil {
-		return err
-	}
-	seen := make(map[string]bool)
-	for _, schema := range schemas {
-		base := strings.TrimSuffix(filepath.Base(schema), ".md")
-		dbType, dbName, ok := strings.Cut(base, "_")
-		if !ok {
-			continue
-		}
-		db := dbType + "_" + dbName
-		if seen[db] {
-			continue
-		}
-		seen[db] = true
-		dir := filepath.Join(root, "migrations", db)
-		current, err := filepath.EvalSymlinks(filepath.Join(dir, "current"))
-		if err != nil {
-			return fmt.Errorf("schema %s has no valid current migration link in %s; submit and apply its migration before implementing dependent code", filepath.Base(schema), dir)
-		}
-		submitted, err := filepath.EvalSymlinks(filepath.Join(dir, "submitted"))
-		if err != nil {
-			return fmt.Errorf("schema %s has no valid submitted migration link in %s; submit and apply its migration before implementing dependent code", filepath.Base(schema), dir)
-		}
-		if current != submitted {
-			return fmt.Errorf("schema %s has different current and submitted migrations in %s; ask the user to run `4sight migrate up` before implementing dependent code", filepath.Base(schema), dir)
-		}
-	}
-	return nil
 }
 
 func listSchemaSpecs(schemasDir string) ([]string, error) {

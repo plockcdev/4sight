@@ -27,8 +27,17 @@ Do not list assets as specs. Instruct the agent to read the composite diff, the
 full relevant workspace specs, all relevant database schema specs, and related
 design and coding standards.
 
-Include the saved user request. Instruct the agent to edit the relevant code or
-schema specs on disk to satisfy it. Schema specs must describe references
+Include the saved user request. Instruct the agent to consider both code and schema specifications for every
+request and edit all relevant specs on disk, including both kinds when the
+change affects both. Preserve their respective responsibilities as defined in
+the top-level design.
+
+Tell the agent the specification directory and file path patterns defined in the
+inherited top-level design, including the distinction between program-wide and
+main-command-specific specs and the nested subcommand layout. Instruct it to
+use the appropriate paths and create needed directories and files when absent.
+
+Schema specs must describe references
 semantically: state the conceptual reference name, target table, and relevant
 nullability, uniqueness, or other constraints without requiring an `_id`
 suffix. For example, describe `current_filepath` as a reference to `filepaths`;

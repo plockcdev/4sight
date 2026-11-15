@@ -1,1 +1,7 @@
 Use `4sight spec change import` to record spec edits, then review and submit them.
+
+Author program-wide conventions in `.4sight/design.md` and `.4sight/coding.md`.
+Use `.4sight/main/cmd.md` for the main command and
+`.4sight/subcommands/build/subcommands/release/cmd.md` for a nested command.
+Place database schema specs in `.4sight/schemas/`, for example `dolt_myapp.md`.
+Code, schema, and text asset changes are imported and submitted together.

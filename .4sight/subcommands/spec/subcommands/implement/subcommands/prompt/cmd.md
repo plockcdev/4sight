@@ -1,7 +1,7 @@
 # 4sight spec implement prompt
 
-Called to generate a prompt to instruct an agent to read code spec and update
-codebase
+Called to generate a prompt for implementing a submitted change, including its
+schema migrations, code, and migration application.
 
 ## Check Change State
 
@@ -56,8 +56,58 @@ changes, and every changed text asset receives a file-level review entry.
 Also separately list the schemas found in the `.4sight/schemas` directory
 telling the agent to read those as well, group by the db type.
 
-Then tell agent update code implementation, but do not update the schema, with
-additional instructions from the following subsections:
+### Shared implementation instructions
+
+Instruct the agent to compare implemented and submitted spec bodies, including
+schema additions, changes, and deletions, and inspect existing migration state.
+Do not edit or import specs during implementation. Account for the shared
+startup preflight: newly built 4sight binaries may apply embedded internal
+migrations on startup. Do not invoke them against the working project if doing
+so would apply migrations outside the requested scope or before the permitted
+step. Use isolated test projects as needed; if the requested scope cannot be
+safely performed, stop and explain.
+
+### Full implementation
+
+For every database whose submitted schema requires a migration, first run
+`4sight migrate implement prompt <path to schema spec relative to schemas dir>`
+and follow it to create and submit the migration. Do not generate migrations for
+unchanged schemas merely because they exist. If a schema was deleted, or a new
+database or migration dependency cannot be handled by the migration prompt
+without changing specs, stop and report the issue rather than inventing a schema
+or marking the change implemented. Check the migration chain and dependencies;
+if the requested ordering cannot safely support the change, stop and explain.
+
+After preparing all required migrations, update the code implementation using
+the code instructions below. Do not apply the
+new migrations before the code changes for a full implementation. Code and tests
+must be designed so they do not require running the new code against the old
+schema; use an isolated migrated test database when necessary. If this is not
+possible, stop and explain the required staged rollout.
+
+After code changes and appropriate verification, run `4sight migrate up` and
+verify success before marking the change complete. If it fails, report the
+failure and any partial application or repair required; do not mark the change
+complete. Run `4sight spec change implement agent done` only after all required
+work succeeds. If startup preflight or migration ordering makes this sequence
+impossible, stop and report the conflict.
+
+### Code-only implementation
+
+For an explicitly code-only request, follow the code instructions below; do not
+generate or apply migrations. If the code requires a pending schema migration,
+stop and report the dependency. After verification, run `4sight spec change
+implement agent done` only if all other required work is already complete;
+otherwise report the remaining work without marking the change implemented.
+
+### Schema-only implementation
+
+For an explicitly schema-only request, use `4sight migrate implement prompt
+<path to schema spec relative to schemas dir>` and follow its schema-only
+instructions. Report the pending migration and how to apply it; do not apply it
+or mark the submitted change implemented as part of this request.
+
+### Code instructions
 
 Remove command implementations whose cmd.md specs no longer exist. Update
 command routing, help, and usage accordingly.
@@ -90,6 +140,11 @@ different than help, it is not a list of all subcommands, options, and
 arguments. It should instead give example use of the tool and describe when to
 use it.
 
+Instruct the agent to explain design principles and conventions from the app's
+specifications when users need them to understand how to use the app. Place
+each explanation in the relevant usage document and keep it concise and
+practical, with examples where helpful.
+
 Also maintain `docs/USAGE_<subcommand>.txt` files for each subcommand
 (recursively)
 
@@ -100,12 +155,10 @@ help)
 
 Embed the usage docs into the application
 
-## Completing Implmentation
+## Shared code implementation checks
 
 At the end of implementation, instruct the agent to ensure that each current
 4sight internal database migration ID is built into the binary as an embedded
 string available to the shared startup check, and that the embedded migration
 chains include all migrations through those IDs.
 
-After successfully implementing the submitted change, instruct the agent to run
-`4sight spec change implement agent done` to mark the implementation complete.

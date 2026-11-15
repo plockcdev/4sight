@@ -16,6 +16,13 @@ under an `assets` directory owned by a command or subcommand are also tracked
 in the shared spec history, but are not design specs.
 Binary assets are not tracked in the spec database.
 
+The user-facing spec usage documentation must explain the specification path
+conventions in the inherited top-level design, including program-wide, main
+command, nested subcommand, and schema spec locations, with examples that help
+users find and author the appropriate files for their own application. Use
+generic application examples, such as a `build` subcommand or a `myapp`
+database, rather than 4sight-specific subcommands or database names.
+
 ## Bodies
 
 Spec bodies on disk when compared to db body should be compared after line
@@ -64,6 +71,8 @@ The workspace pointer tracks spec edits that can be reviewed and should line up
 with the workspace except for unimported specs.
 
 The submitted pointer tracks the latest spec change accepted for implementation.
+Code specs, schema specs, and tracked text assets share the same change history
+and submission; submit captures their workspace bodies together.
 
 The implemented pointer tracks the latest submitted change whose implementation
 is complete.

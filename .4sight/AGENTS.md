@@ -7,26 +7,18 @@ Do not treat CHANGELOG as a spec input
 Always read `.4sight/design.md` before working in this repository. It defines
 the program design, command directory structure, and specification conventions.
 
-# Implementing Schema Specs
+# Implementing Specs
 
-If user asks you to implement a schema spec or "the schema", run `4sight migrate
-implement prompt <path to schema spec relative to schemas dir>` and then follow
-the prompt
+When asked to implement the spec without limiting the scope, run `4sight spec
+implement prompt` and follow it. The implementation includes applicable schema
+migrations, code changes, and running `4sight migrate up`, in that order.
+Do not change or import code or schema specs during implementation.
 
-Do not do this if they just ask to implement "the spec" Do not update any schema
-specs or code specs as part of implementation
-
-# Implementing Code Specs
-
-If user asks you to implement code spec (or doesn't specify which kind of spec),
-run `4sight spec implement prompt` and then follow the prompt
-
-Do not update or import any code or schema specs during implementation
-
-Before implementing code that depends on a schema change, check that
-database’s current and submitted migration symlinks. If they point to
-different migrations, stop and ask the user to run 4sight migrate up. Do not
-update code to work with the pending schema until current matches submitted.
+When explicitly asked to implement only a schema, run `4sight migrate implement
+prompt <path to schema spec relative to schemas dir>` and follow it. When
+explicitly asked to implement only code, run `4sight spec implement prompt` and
+follow its scoped instructions. Do not mark a submitted change fully implemented
+until all its required schema, code, and migration work succeeds.
 
 # Handling User request for spec review
 
