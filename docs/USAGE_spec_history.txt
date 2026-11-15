@@ -1,0 +1,1 @@
+Run `4sight spec history` to list all changes, or `4sight spec history <file-path>` to follow a tracked file.

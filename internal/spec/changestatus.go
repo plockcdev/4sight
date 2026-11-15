@@ -22,20 +22,32 @@ func ChangeList(cwd string) error {
 }
 
 func runChangeList(st *doltStore, out io.Writer) error {
-	pointers, err := st.queryCSV("SELECT submitted_change_id, implemented_change_id FROM spec.current_changes WHERE singleton = 1")
+	return listChanges(st, out, true)
+}
+
+func listChanges(st *doltStore, out io.Writer, active bool) error {
+	pointers, err := st.queryCSV("SELECT submitted_change_id, implemented_change_id, workspace_change_id FROM spec.current_changes WHERE singleton = 1")
 	if err != nil {
 		return fmt.Errorf("read current change pointers: %w", err)
 	}
-	if len(pointers) != 1 || len(pointers[0]) < 2 || pointers[0][0] == "" || pointers[0][1] == "" {
+	if len(pointers) != 1 || len(pointers[0]) < 3 || pointers[0][0] == "" || pointers[0][1] == "" || pointers[0][2] == "" {
 		return fmt.Errorf("current change pointers are not initialized")
 	}
 	submitted, implemented := pointers[0][0], pointers[0][1]
-	rows, err := st.queryCSV("SELECT c.id, COALESCE(cr.summary, 'no summary yet') FROM spec.changes c LEFT JOIN spec.change_review cr ON cr.change_id = c.id AND cr.attempt = (SELECT MAX(r2.attempt) FROM spec.change_review r2 WHERE r2.change_id=c.id) ORDER BY c.created_at ASC, c.id ASC")
+	query := "SELECT c.id, COALESCE(cr.summary, 'no summary yet') FROM spec.changes c LEFT JOIN spec.change_review cr ON cr.change_id = c.id AND cr.attempt = (SELECT MAX(r2.attempt) FROM spec.change_review r2 WHERE r2.change_id=c.id)"
+	if active {
+		query += " JOIN spec.changes_closure a ON a.child_id=c.id AND a.parent_id=" + sqlString(implemented) + " AND a.depth>0 JOIN spec.changes_closure w ON w.parent_id=c.id AND w.child_id=" + sqlString(pointers[0][2])
+	}
+	rows, err := st.queryCSV(query + " ORDER BY c.created_at ASC, c.id ASC")
 	if err != nil {
 		return fmt.Errorf("list changes: %w", err)
 	}
 	if len(rows) == 0 {
-		_, err := fmt.Fprintln(out, "no changes found")
+		message := "no changes found"
+		if active {
+			message = "no active changes"
+		}
+		_, err := fmt.Fprintln(out, message)
 		return err
 	}
 	entries := make([]changeListEntry, 0, len(rows))

@@ -32,7 +32,7 @@ valid UTF-8, contain no NUL, and contain no Unicode control characters except
 TAB (U+0009), LF (U+000A), and CR (U+000D). Text asset symlinks are errors.
 Treat all other asset files as binary and ignore them during discovery, import,
 export, and sync checks.
-The project-relative path model and file identity rules follow that schema
+The stored path model and file identity rules follow that schema
 spec. Schema specs are located and named using the conventions above.
 
 Import detects likely renames and copies using line-based similarity. Split the
@@ -57,3 +57,18 @@ Whenever resolving a body or file change for a target change pointer, search the
 pointer's change ancestry. For each file with a file change on that ancestry,
 use only its latest file change on the ancestry and the body associated with
 that change.
+
+## Change pointer lifecycle
+
+The workspace pointer tracks spec edits that can be reviewed and should line up
+with the workspace except for unimported specs.
+
+The submitted pointer tracks the latest spec change accepted for implementation.
+
+The implemented pointer tracks the latest submitted change whose implementation
+is complete.
+
+File identity, path history, deletion, and copy provenance follow the schema
+spec for 4sight's spec database; discovery and rename/copy detection follow the
+inherited spec design.
+

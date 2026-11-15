@@ -1,8 +1,8 @@
 # 4sight spec change list
 
-Lists specification changes with their IDs and summaries.
+List active specification changes with their IDs and summaries. Active changes are the changes on the workspace ancestry after the implemented pointer, excluding the implemented change and including the workspace change. If workspace and implemented are the same, there are no active changes.
 
-Read changes from the spec database. For each change, display its ID and the
+Read active changes from the spec database. For each change, display its ID and the
 summary from its saved overall change review. If a change has no saved review,
 display `no summary yet`.
 
@@ -13,7 +13,7 @@ When creation times are equal, sort change IDs in ascending lexicographic
 order.
 
 Render a human-readable list with one entry per change. If there are no changes,
-print `no changes found`.
+print `no active changes`.
 
 Render a left gutter with two marker columns before each change entry: `I` for
 the change identified by the implemented pointer and `S` for the change

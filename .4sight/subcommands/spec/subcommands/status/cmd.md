@@ -1,4 +1,4 @@
-# 4sight spec change status
+# 4sight spec status
 
 Displays the current workspace, submitted, and implemented change IDs.
 

@@ -1,0 +1,3 @@
+Use `4sight spec body <change-id> <locator>` to print a specification
+file's body at a historical change. The locator is the command path followed by
+the filename, for example `spec body ch-012 spec export cmd.md`.

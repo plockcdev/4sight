@@ -20,6 +20,7 @@ type deps struct {
 	specImplementPrompt          func(cwd string) error
 	specChangeImport             func(cwd string) error
 	specChangeList               func(cwd string) error
+	specHistory                  func(cwd, file string) error
 	specChangeRequest            func(cwd, prompt string) error
 	specChangeStatus             func(cwd string) error
 	specChangeSubmit             func(cwd string) error
@@ -54,6 +55,7 @@ func Run(args []string) int {
 		specImplementPrompt:          spec.ImplementPrompt,
 		specChangeImport:             spec.ChangeImport,
 		specChangeList:               spec.ChangeList,
+		specHistory:                  spec.History,
 		specChangeRequest:            spec.ChangeRequest,
 		specChangeStatus:             spec.ChangeStatus,
 		specChangeSubmit:             spec.ChangeSubmit,
@@ -145,6 +147,9 @@ func runHelpTopic(topic []string) int {
 	case "spec implement prompt":
 		printSpecImplementPromptHelp()
 		return 0
+	case "spec history":
+		printSpecHistoryHelp()
+		return 0
 	case "spec export":
 		printSpecExportHelp()
 		return 0
@@ -166,7 +171,7 @@ func runHelpTopic(topic []string) int {
 	case "spec change request":
 		printSpecChangeRequestHelp()
 		return 0
-	case "spec change status":
+	case "spec status":
 		printSpecChangeStatusHelp()
 		return 0
 	case "spec change submit":
@@ -202,7 +207,7 @@ func runHelpTopic(topic []string) int {
 	case "spec change author agent prompt":
 		printSpecChangeAuthorAgentPromptHelp()
 		return 0
-	case "spec change body":
+	case "spec body":
 		printSpecChangeBodyHelp()
 		return 0
 	default:
@@ -295,6 +300,12 @@ func parseSpec(args []string, d deps) int {
 	case "-h", "--help":
 		printSpecHelp()
 		return 0
+	case "history":
+		return parseSpecHistory(args[1:], d)
+	case "status":
+		return parseSpecChangeStatus(args[1:], d)
+	case "body":
+		return parseSpecChangeBody(args[1:], d)
 	case "export":
 		return parseSpecExport(args[1:], d)
 	case "sync-check":
@@ -313,6 +324,30 @@ func parseSpec(args []string, d deps) int {
 	printSpecHelp()
 	fmt.Fprintf(os.Stderr, "4sight spec: unknown command %q\n", args[0])
 	return 1
+}
+
+func parseSpecHistory(args []string, d deps) int {
+	if len(args) > 1 || (len(args) == 1 && strings.HasPrefix(args[0], "-")) {
+		printSpecHistoryHelp()
+		return 1
+	}
+	cwd, err := d.getwd()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "4sight spec history:", err)
+		return 1
+	}
+	file := ""
+	if len(args) == 1 {
+		file = args[0]
+	}
+	if err := d.specHistory(cwd, file); err != nil {
+		fmt.Fprintln(os.Stderr, "4sight spec history:", err)
+		return 1
+	}
+	return 0
+}
+func printSpecHistoryHelp() {
+	fmt.Print("4sight spec history [file-path]\n\nList all changes or the history of a tracked file.\n\nOptions:\n  -h, --help        Show this help\n")
 }
 
 func parseSpecImplement(args []string, d deps) int {
@@ -382,8 +417,6 @@ func parseSpecChange(args []string, d deps) int {
 		return parseSpecChangeList(args[1:], d)
 	case "request":
 		return parseSpecChangeRequest(args[1:], d)
-	case "status":
-		return parseSpecChangeStatus(args[1:], d)
 	case "submit":
 		return parseSpecChangeSubmit(args[1:], d)
 	case "implement":
@@ -392,8 +425,6 @@ func parseSpecChange(args []string, d deps) int {
 		return parseSpecChangeReview(args[1:], d)
 	case "author":
 		return parseSpecChangeAuthor(args[1:], d)
-	case "body":
-		return parseSpecChangeBody(args[1:], d)
 	}
 	if strings.HasPrefix(args[0], "-") {
 		printSpecChangeHelp()
@@ -417,16 +448,16 @@ func parseSpecChangeBody(args []string, d deps) int {
 	}
 	if len(args) < 2 {
 		printSpecChangeBodyHelp()
-		fmt.Fprintln(os.Stderr, "4sight spec change body: requires a change ID and spec file locator")
+		fmt.Fprintln(os.Stderr, "4sight spec body: requires a change ID and spec file locator")
 		return 1
 	}
 	cwd, err := d.getwd()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "4sight spec change body:", err)
+		fmt.Fprintln(os.Stderr, "4sight spec body:", err)
 		return 1
 	}
 	if err := d.specChangeBody(cwd, args[0], args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, "4sight spec change body:", err)
+		fmt.Fprintln(os.Stderr, "4sight spec body:", err)
 		return 1
 	}
 	return 0
@@ -534,11 +565,11 @@ func parseSpecChangeStatus(args []string, d deps) int {
 	}
 	cwd, err := d.getwd()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "4sight spec change status:", err)
+		fmt.Fprintln(os.Stderr, "4sight spec status:", err)
 		return 1
 	}
 	if err := d.specChangeStatus(cwd); err != nil {
-		fmt.Fprintln(os.Stderr, "4sight spec change status:", err)
+		fmt.Fprintln(os.Stderr, "4sight spec status:", err)
 		return 1
 	}
 	return 0
@@ -938,6 +969,9 @@ func printSpecHelp() {
 Import, export, and check specification bodies in the spec database.
 
 Commands:
+  body              Render a spec body at a change
+  history           List changes or a file history
+  status            Show the current change pointers
   change            Record filesystem changes and prompts as a change
   export            Write a spec body from the database to disk
   sync-check        Compare database bodies with on-disk spec files
@@ -985,11 +1019,9 @@ func printSpecChangeHelp() {
 Record specification filesystem changes in the spec database.
 
 Commands:
-  body              Render a spec body at a change
   import            Persist filesystem spec deltas as a workspace change
   list              List changes with their summaries
   request           Save a prompt as a new workspace change
-  status            Show the current change pointers
   submit            Submit the current workspace change for implementation
   implement         Mark a submitted change as implemented
   review            Review changes to the specification
@@ -1014,13 +1046,13 @@ func printSpecChangeAuthorAgentPromptHelp() {
 }
 
 func printSpecChangeBodyHelp() {
-	fmt.Print("4sight spec change body <change-id> <spec file locator>\n\nRender a specification body at the given change. The locator is the command path followed by the filename, such as `mysubcommand design.md` or `main cmd.md`.\n\nOptions:\n  -h, --help        Show this help\n")
+	fmt.Print("4sight spec body <change-id> <spec file locator>\n\nRender a specification body at the given change. The locator is the command path followed by the filename, such as `mysubcommand design.md` or `main cmd.md`.\n\nOptions:\n  -h, --help        Show this help\n")
 }
 
 func printSpecChangeListHelp() {
 	fmt.Print(`4sight spec change list
 
-List specification changes with their IDs and summaries.
+List active specification changes with their IDs and summaries.
 
 This command takes no arguments.
 
@@ -1030,7 +1062,7 @@ Options:
 }
 
 func printSpecChangeStatusHelp() {
-	fmt.Print(`4sight spec change status
+	fmt.Print(`4sight spec status
 
 Display the current workspace, submitted, and implemented change IDs.
 

@@ -182,14 +182,15 @@ either case, digits, '.', '_', and '-', and not equal `.` or `..`.
 
 ## dirs
 
-Directories have unique project-relative paths. The empty path represents the
-project root. Specs are under `.4sight/`; tracked text assets are under their
-owning command or subcommand source directory. Nested text asset paths are
-represented by directory rows for each path. Binary assets are not represented
-in the spec database.
+Directories have unique paths relative to the project’s `.4sight` directory.
+The empty path represents `.4sight` itself. Specs and tracked text assets are
+stored relative to that directory; text assets are under their owning command
+or subcommand assets directory. Nested text asset paths are represented by
+directory rows for each path. Binary assets are not represented in the spec
+database.
 
 - path: unique directory path
 
 Paths must contain no whitespace, use ASCII letters in either case, digits,
 '/', '.', '_', and '-', contain no repeated '/' separators, and have no empty,
-'.', or '..' segments. The `.4sight` directory is a valid leading segment.
+'.', or '..' segments.

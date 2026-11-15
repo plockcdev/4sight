@@ -13,47 +13,47 @@ var usageDocs embed.FS
 var helpTopics = map[string]bool{
 	"": true, "init": true, "migrate": true, "migrate up": true,
 	"migrate implement": true, "migrate implement prompt": true,
-	"spec": true, "spec export": true, "spec sync-check": true,
+	"spec": true, "spec history": true, "spec export": true, "spec sync-check": true,
 	"spec sync-diff": true, "spec implement": true, "spec implement prompt": true,
 	"spec change": true, "spec change import": true, "spec change list": true,
-	"spec change request": true, "spec change status": true, "spec change submit": true,
+	"spec change request": true, "spec status": true, "spec change submit": true,
 	"spec change implement": true, "spec change implement agent": true,
 	"spec change implement agent done": true, "spec change review": true,
 	"spec change review agent": true, "spec change review agent prompt": true,
 	"spec change review agent response": true, "spec change review show": true, "spec change review list": true,
 	"spec change author": true, "spec change author agent": true,
 	"spec change author agent prompt": true,
-	"spec change body":                true,
+	"spec body":                       true,
 }
 
 var usageCommands = map[string]bool{
 	"": true, "init": true, "migrate": true, "migrate up": true,
 	"migrate implement": true, "migrate implement prompt": true,
-	"spec": true, "spec export": true, "spec sync-check": true,
+	"spec": true, "spec history": true, "spec export": true, "spec sync-check": true,
 	"spec sync-diff": true, "spec implement": true, "spec implement prompt": true,
 	"spec change": true, "spec change import": true, "spec change list": true,
-	"spec change request": true, "spec change status": true, "spec change submit": true,
+	"spec change request": true, "spec status": true, "spec change submit": true,
 	"spec change implement": true, "spec change implement agent": true,
 	"spec change implement agent done": true, "spec change review": true,
 	"spec change review agent": true, "spec change review agent prompt": true,
 	"spec change review agent response": true, "spec change review show": true, "spec change review list": true,
 	"spec change author": true, "spec change author agent": true,
 	"spec change author agent prompt": true,
-	"spec change body":                true,
+	"spec body":                       true,
 }
 
 var plainUsageCommands = map[string]bool{
 	"": true, "init": true, "migrate": true, "migrate up": true, "migrate implement": true,
-	"spec": true, "spec sync-check": true, "spec sync-diff": true,
+	"spec": true, "spec history": true, "spec status": true, "spec sync-check": true, "spec sync-diff": true,
 	"spec implement": true, "spec implement prompt": true, "spec change": true,
-	"spec change import": true, "spec change list": true, "spec change status": true,
+	"spec change import": true, "spec change list": true,
 	"spec change submit": true, "spec change implement": true,
 	"spec change implement agent": true, "spec change implement agent done": true,
 	"spec change review": true, "spec change review agent": true,
 	"spec change review agent prompt": true, "spec change review agent response": true,
 	"spec change review show": true, "spec change review list": true,
 	"spec change author": true, "spec change author agent": true,
-	"spec change author agent prompt": true, "spec change body": true,
+	"spec change author agent prompt": true, "spec body": true,
 }
 
 func runExplicitHelp(args []string) (int, bool) {
