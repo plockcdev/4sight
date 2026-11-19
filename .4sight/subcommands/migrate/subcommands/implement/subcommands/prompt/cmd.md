@@ -69,9 +69,14 @@ spec for the db:
 Tell the agent after writing the migration file, to move submitted to the
 new migration file
 
-For a schema-only request, instruct the agent to report the pending migration
-and tell the user to run `4sight upgrade` for internal migrations or
-`4sight migrate up` for application migrations. When invoked as part of a full
+For a schema-only request, instruct the agent to report the prepared migration
+as pending and not yet applied. For an internal migration, explain that the new
+migration must be packaged into a newly built 4sight binary before that binary's
+`4sight upgrade` can apply it. The existing binary may not include the migration.
+The build must include and validate the complete internal migration chain through
+the new migration. For an application migration, tell the user how to apply it
+with `4sight migrate up`. Do not apply migrations or mark the submitted change
+implemented as part of a schema-only request. When invoked as part of a full
 spec implementation, defer applying migrations to the full implementation's
 final migration step; do not ask the user to run them separately.
 
