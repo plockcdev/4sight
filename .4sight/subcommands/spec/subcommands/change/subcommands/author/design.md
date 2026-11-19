@@ -5,6 +5,14 @@ workspace specs. It is separate from the review prompt: authoring edits specs
 and imports them, while review assesses imported changes without authoring from
 the saved request.
 
+When authoring `4sight_AGENTS.md`, if an instruction delegates a workflow to a
+4sight prompt command, keep the asset focused on when to invoke the command,
+which prompt to select, and following its output. Specify the substantive steps,
+scope-specific behavior, and completion instructions in the delegated prompt's
+specification so its generated output carries them. Do not duplicate or override
+those steps in the asset. Preserve routing between prompts and genuinely global
+rules that apply beyond one workflow. Explicit user instructions take precedence.
+
 Schema specs describe the logical data model. Describe references by their
 conceptual names and explicitly identify the referenced table and relevant
 constraints. Do not require implementation-specific `_id` suffixes in schema

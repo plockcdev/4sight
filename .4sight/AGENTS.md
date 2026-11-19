@@ -10,15 +10,13 @@ the program design, command directory structure, and specification conventions.
 # Implementing Specs
 
 When asked to implement the spec without limiting the scope, run `4sight spec
-implement prompt` and follow it. The implementation includes applicable schema
-migrations, code changes, and running `4sight migrate up`, in that order.
+implement prompt` and follow it.
 Do not change or import code or schema specs during implementation.
 
 When explicitly asked to implement only a schema, run `4sight migrate implement
 prompt <path to schema spec relative to schemas dir>` and follow it. When
 explicitly asked to implement only code, run `4sight spec implement prompt` and
-follow its scoped instructions. Do not mark a submitted change fully implemented
-until all its required schema, code, and migration work succeeds.
+follow its scoped instructions.
 
 # Handling User request for spec review
 

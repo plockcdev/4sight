@@ -35,19 +35,52 @@ references semantically.
 program will determine the last submitted spec for that db by looking in the migrations dir
 for that db, and seeing what submitted points to. This will be known as the parent.
 
-If there was no migrations, then this is the first one.  Prompt the user to add to the
-dolt_4sight_migration.md a migration tracking table for the new db like we track them for 4sight_migation then ask it to add the initial migration file to create the (empty) database and create submitted link.
+For a live submitted schema, inspect the database's submitted migration before
+allocating a new migration. Resolve the schema identity from its path and the
+recorded change ID, and compare its recorded CRC32 with the normalized submitted
+schema body as specified in the migration design. If identity and CRC32 match,
+report the existing migration as already prepared and do not create another or
+move the submitted link. A matching CRC32 is a practical match, not proof that
+the SQL is correct or that the migration has been applied. Use migration state
+to determine whether it is applied. Do not use SHA-256 for matching.
 
-For any migration, tell the agent to generate the migration file for requested
+If the submitted migration lacks valid matching metadata, do not infer that it
+implements the schema. For missing or malformed metadata on a pre-existing
+migration where the correct baseline cannot otherwise be established, stop and
+report the ambiguity and request reconciliation. For a valid different schema
+checksum, determine whether the change needs SQL; a mismatch alone does not
+require a migration. If no SQL is needed, report that determination without
+creating an empty migration solely to record metadata.
+
+If there are no migrations, this is the first one. Instruct the agent to create
+the initial migration for the empty database and its submitted link. For an
+application database, `migrate up` prepares its standard tracking table before
+applying the migration. For internal databases, migrations must be embedded in
+the 4sight binary and are applied by `4sight upgrade`, not `migrate up`.
+
+For an ordinary SQL migration, tell the agent to generate the migration file for requested
 spec for the db:
 
 - show target path for migration calculated from input arg
 - show the schema spec path and tell agent to read it
+- instruct the agent to include the schema metadata comments defined in the
+  migration design for a migration implementing a live submitted schema
 
 Tell the agent after writing the migration file, to move submitted to the
 new migration file
 
 For a schema-only request, instruct the agent to report the pending migration
-and tell the user how to run `4sight migrate up`. When invoked as part of a full
+and tell the user to run `4sight upgrade` for internal migrations or
+`4sight migrate up` for application migrations. When invoked as part of a full
 spec implementation, defer applying migrations to the full implementation's
 final migration step; do not ask the user to run them separately.
+
+
+For a deleted submitted schema, accept its former relative schema path even
+though the file is absent. Resolve its last implemented body and identity from
+spec history, and instruct the agent to read that body and the existing chain.
+Create a standalone final retirement entry as described in the migration design,
+then update submitted to it. Do not generate a corresponding SQL file. Any
+necessary schema or data changes belong in ordinary preceding migrations. If the database was never created,
+report that no retirement migration is needed. Reject internal database deletion
+and ambiguous or conflicting database lifecycles as spec defects.

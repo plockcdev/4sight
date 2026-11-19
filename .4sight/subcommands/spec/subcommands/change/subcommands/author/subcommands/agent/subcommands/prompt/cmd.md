@@ -32,6 +32,14 @@ request and edit all relevant specs on disk, including both kinds when the
 change affects both. Preserve their respective responsibilities as defined in
 the top-level design.
 
+Instruct the author to follow the inherited author design when editing
+`4sight_AGENTS.md` and any workflow it delegates to a prompt command: keep
+workflow instructions in the generated prompt's specification and keep the
+asset focused on routing, invocation, and applicable global rules.
+
+When introducing a managed application database, follow the standard application
+tracking table requirements in the schema spec.
+
 Tell the agent the specification directory and file path patterns defined in the
 inherited top-level design, including the distinction between program-wide and
 main-command-specific specs and the nested subcommand layout. Instruct it to

@@ -2,26 +2,28 @@
 
 ## Internal database startup preflight
 
-Before a command accesses an initialized project's internal databases, run one
-shared preflight per process. Help and usage, commands outside a project, and
-initial creation by `init` do not require this preflight. An initialized project
-missing either internal database or its tracking tables fails with a diagnostic
-directing the user to `4sight init` for initialization or recovery.
+For every command in an initialized project, run one shared read-only
+preflight per process. Help and usage remain available without
+preflight, including for uninitialized, outdated, or damaged projects. Initial
+creation by `init` uses its own checks. `upgrade` uses the same validation but
+is allowed to proceed when valid histories are behind; all other database
+commands, including `migrate up`, stop before mutation in that case and tell the
+user to run `4sight upgrade`.
 
 The binary embeds the complete ordered migration chains and an expected current
-migration ID string for each internal database: `4sight_migration` and `spec`.
-Compare the actual recorded migration history with those chains. Before any
-mutation, validate both embedded chains, expected IDs, and both recorded
-histories; each recorded set of IDs must equal the IDs in a complete prefix of
-its parent-linked chain. Timestamps do not determine migration order. Fail
-on unknown, divergent, incomplete, or newer history. Report the database and
-offending migration. Do not infer compatibility by comparing ID strings.
+migration ID for each internal database: `4sight_migration` and `spec`. Validate
+both chains and expected IDs and compare the recorded histories in
+`4sight_migration.4sight_migration` and `4sight_migration.spec` with their
+chains. These records, not filesystem symlinks, are authoritative for applied
+internal migration state. Each recorded history must be a complete prefix of its parent-linked
+chain; timestamps and lexicographic ID order do not determine migration order.
+Validate both before reporting upgrade required. Unknown, divergent, incomplete,
+newer, malformed or missing history, databases or tracking tables are errors:
+identify the database and offending state, do not tell the user an upgrade alone
+will repair it, and give safe recovery guidance. Never mutate during preflight.
+If both histories are valid but at least one is behind, report upgrade required;
+if both are current, allow the command to proceed.
 
-Apply missing embedded migrations in order, first for `4sight_migration`, then
-for `spec`, recording each successful migration. Stop on failure, report the
-database and migration, and do not run the requested command. Prevent concurrent
-preflights from applying migrations to the same project simultaneously. Use
-atomic migration and tracking updates where supported; otherwise report that a
-failed migration may require repair before retrying. Preflight does not inspect
-or migrate application databases.
-
+Serialize validation and database access as needed with upgrade and application
+migration so that a concurrent upgrade cannot invalidate a successful check.
+Preflight does not inspect or migrate application databases.

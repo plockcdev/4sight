@@ -55,21 +55,13 @@ behaves, and how it outputs. This is code specific.
 
 # Implementing Specs
 
-When asked to implement the spec without limiting the scope, run `4sight spec
-implement prompt` and follow it. The implementation includes applicable schema
-migrations, code changes, and running `4sight migrate up`, in that order.
-Do not change or import code or schema specs during implementation.
-
-When explicitly asked to implement only a schema, run `4sight migrate implement
-prompt <path to schema spec relative to schemas dir>` and follow it. When
-explicitly asked to implement only code, run `4sight spec implement prompt` and
-follow its scoped instructions. Do not mark a submitted change fully implemented
-until all its required schema, code, and migration work succeeds.
+When asked to implement the spec, run `4sight spec implement prompt` and follow
+it. Do not change or import code or schema specs during implementation.
 
 # Handling User request for spec review
 
 When the user requests a spec review, run `4sight spec change review agent
-prompt` and follow the instructions
+prompt` and follow the instructions.
 
 If the current workspace change already has a review and the user asks for a
 review, stop and tell them a review already exists. Ask them to request a

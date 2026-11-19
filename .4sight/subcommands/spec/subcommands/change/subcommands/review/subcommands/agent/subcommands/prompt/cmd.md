@@ -14,6 +14,8 @@ attempt number. Do not alter prior attempts.
 Review the specifications for clarity, completeness, and consistency. They
 describe intended behavior, which may not yet be implemented; do not treat
 missing or incomplete code implementation as a specification defect.
+Check that newly introduced managed databases can use the standard application
+migration tracking requirements in the schema spec.
 
 The meta info is id of the current workspace change, the current submitted
 change, and the change prompt (if not empty). Explicitly identify the workspace
