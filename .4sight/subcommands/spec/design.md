@@ -23,6 +23,25 @@ users find and author the appropriate files for their own application. Use
 generic application examples, such as a `build` subcommand or a `myapp`
 database, rather than 4sight-specific subcommands or database names.
 
+## Identifying the project during implementation
+
+To decide whether a project is 4sight developing itself, compare the Git
+repository root directory name with the repository name from the `origin` fetch
+URL. For the remote name, remove a trailing slash, take the final URL or
+SCP-style path component, and remove an optional `.git` suffix. Compare names
+case-insensitively.
+
+- If both names are `4sight`, identify the project as 4sight developing itself.
+- If neither name is `4sight`, identify it as an ordinary application project;
+  the two names do not need to match.
+- If exactly one name is `4sight`, or either name cannot be determined
+  unambiguously, the project identity requires an explicit user answer: 4sight
+  itself or an ordinary application.
+
+Do not infer identity from database names or change Git configuration or the
+repository directory to affect the result. Names select the implementation
+workflow; they do not prove repository authenticity.
+
 ## Bodies
 
 Spec bodies on disk when compared to db body should be compared after line

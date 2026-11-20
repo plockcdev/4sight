@@ -72,7 +72,7 @@ the binary, in migration order. Track applied migration IDs in the target's
 migration as applied.
 - Record every successfully applied migration; if initialization is interrupted,
   report recovery instructions instead of treating a subsequent init as a fresh project.
-- Do not invoke `4sight migrate up`. That command manages the target
+- Do not invoke `4sight spec change implement agent migrate up`. That command manages the target
 application's databases.
 - Do not write internal migration files or create internal migration symlinks in
 the target repo. If existing internal current symlinks and source files are

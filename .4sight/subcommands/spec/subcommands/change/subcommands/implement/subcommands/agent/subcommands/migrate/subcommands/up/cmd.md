@@ -1,11 +1,41 @@
-# 4sight migrate up
+# 4sight spec change implement agent migrate up
 
-Apply pending application database migrations only. This command takes no
-arguments. Run shared preflight first; if internal upgrades are pending, stop and
-direct the user to `4sight upgrade`. Never apply internal database migrations,
-including submitted filesystem migrations for `4sight_migration` or `spec`.
-Process live submitted application schemas and retired application databases
-with a submitted retirement migration, even if their schema file is absent.
+Apply prepared application database migrations for the current submitted spec
+change. This command takes no arguments or flags. It is intended for the
+implementing agent after code and migration tests pass. It does not prepare
+migrations or mark the change implemented. Require a pending submitted change and
+matching workspace and submitted specs; stop before mutation if either fails.
+
+Determine the project identity using the inherited spec design. If it requires a
+user answer, require the agent to provide that answer on standard input as
+exactly one line: `4sight` or `application`. The implementation prompt must tell
+the agent to ask the user before supplying the answer. If input is absent,
+invalid, or unavailable, stop without mutation and explain that the project
+identity must be clarified. Do not save the answer as project configuration.
+
+Run shared preflight and process live submitted application schemas and retired
+application databases with a submitted retirement entry. In an ordinary project,
+never apply migrations for 4sight's own internal databases; direct the user to
+`4sight upgrade` if the running binary requires an internal upgrade.
+
+When 4sight is developing itself, its `4sight_migration` and `spec` databases
+are the application databases for this command. The agent invokes the new source
+using `go run ./cmd/4sight` from the repository root. For this command only,
+shared preflight permits valid recorded histories that are complete older prefixes
+of the running binary's embedded chains. It must still reject missing, divergent,
+unknown, newer, or otherwise invalid histories before mutation. This exception
+does not run `4sight upgrade` or refresh its managed files.
+
+Hold the project lock for the entire operation and revalidate both histories and
+target chains under it. Before mutation, verify the submitted source migration
+chains, their expected IDs, and their bytes match the running binary's embedded
+chains. Apply `4sight_migration` first, then `spec`. Their existing internal
+tracking tables are authoritative; never create replacement application tracking
+tables for these names. Record each applied ID once and update its source current
+link only after successful recording. After migration, use `go run ./cmd/4sight`
+for verification and `agent done`. If interrupted or a migration fails, report
+the last completed steps and stop for safe reconciliation or repair; never replay
+an uncertain migration. Do not claim the change complete on partial success.
 
 Before any application migration, if an application database exists without a
 complete trustworthy recorded migration history, stop and require restoration

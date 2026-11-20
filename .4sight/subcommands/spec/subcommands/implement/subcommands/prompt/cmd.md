@@ -56,76 +56,131 @@ changes, and every changed text asset receives a file-level review entry.
 Also separately list the schemas found in the `.4sight/schemas` directory
 telling the agent to read those as well, group by the db type.
 
-### Shared implementation instructions
+### Identify the project
 
-Instruct the agent to compare implemented and submitted spec bodies, including
-schema additions, changes, and deletions, and inspect existing migration state.
-Do not edit or import specs during implementation. Shared preflight is read-only.
-If an internal upgrade predating the requested implementation is required to
-access the project, report the dependency and stop; do not upgrade the working
-project during preparation or testing. Use isolated test projects and databases;
-stop if the requested scope cannot be safely performed.
+Determine the project identity using the inherited spec design. Tell the agent
+whether this is 4sight developing itself or an ordinary application. If the
+identity requires a user answer, instruct the agent to stop and ask the user,
+continue only after an explicit answer, and retain it for the migration step.
+
+### Implementation task list
+
+Instruct the agent to make and maintain a task list for the applicable steps below.
+Use a durable task tracking system if one is available, so progress survives
+interruptions. Mark a step complete only after it succeeds. On resuming, check
+actual files, migration history, and test results before proceeding; do not
+assume a task's recorded status proves the work is complete.
+
+First compare implemented and submitted specs, including schema additions,
+changes, and deletions, and inspect migration state. Do not edit or import
+specs during implementation. If an internal upgrade predating this change is
+needed to access the project, stop and report the dependency; do not upgrade the
+working project during preparation or testing. Use isolated test projects and
+databases and stop if the requested scope cannot be performed safely.
+
+### Prepare migrations
+
+Instruct the agent to read the applicable command and design specs and schema
+specs, and to prepare all migrations needed for the submitted schemas before
+changing code. Infer indexes and constraints needed to meet those specs. Follow
+the migration design for chain names, metadata, and retirement. Do not prepare
+migrations for unchanged schemas merely because they exist.
+
+Schema specs imply a primary key named `id` for entity tables unless they
+specify a different key. Generate this implied `id` primary key even though it
+is omitted from the schema spec. Do not add a surrogate `id` to a pure join
+table; use its referenced columns as a composite primary key unless the schema
+spec specifies otherwise. Preserve any specified natural key, custom
+identifier format, or nonstandard primary-key constraint.
+
+Resolve each reference against the referenced table's primary key.
+
+- For a single-column primary key, name the SQL foreign-key column by appending
+  `_id` to the conceptual reference name. For example, schema-spec
+  `current_filepath` becomes SQL `current_filepath_id`.
+- For a composite primary key, create one SQL foreign-key column for each
+  primary-key component. Name each column
+  `<reference_name>_<component_name>_id`, use a type compatible with its target
+  component, and create one composite foreign-key constraint over all columns
+  in the same order as the target key. Do not use a single
+  `<reference_name>_id` column for a composite key.
+- If the schema spec does not make the component mapping clear, stop and report
+  the ambiguity rather than inventing a mapping.
+
+Keep `_id` as an SQL implementation convention; schema specs describe
+references semantically.
+
+For each live schema that needs SQL, inspect its existing submitted migration.
+Resolve the schema identity from its recorded path and change ID. If the identity
+and normalized CRC32 match the submitted schema, reuse that migration; this does
+not establish that its SQL is correct or that it has been applied. Do not use
+SHA-256 for matching. If a pre-existing migration lacks valid metadata and its
+baseline cannot otherwise be established, stop and request reconciliation. A
+different checksum alone does not require SQL; if no SQL is needed, do not create
+an empty migration solely for metadata.
+
+For a new database with no migration chain, create the initial migration that
+creates the empty database, then create a successor with the SQL needed to reach
+the submitted schema. The successor contains the schema metadata required by the
+migration design; point submitted at the successor. If the initial migration
+already exists on retry, validate it and the chain, reuse it, and prepare the
+missing successor. If an existing successor matches the schema, reuse it. Stop on
+ambiguous or conflicting state rather than create duplicate migrations. If the
+submitted schema requires no SQL after creating the database, explain that and
+leave submitted at the initial migration.
+
+For a deleted submitted schema, use its former path and last implemented body
+from spec history. If the database was created, prepare a final retirement entry
+and point submitted at it; otherwise report that no retirement is needed. Reject
+internal database deletion and ambiguous or conflicting database lifecycles.
+Check dependencies and migration ordering. If the change cannot be implemented
+safely without changing specs, stop and explain rather than inventing a schema.
 
 ### Full implementation
 
-For every database whose submitted schema requires a migration, first run
-`4sight migrate implement prompt <path to schema spec relative to schemas dir>`
-and follow it to prepare and submit the migration, reusing an existing submitted
-migration when its schema metadata matches. Do not generate migrations for
-unchanged schemas merely because they exist. Prepare internal and application
-migrations according to their respective migration paths. For deleted schemas, pass their former paths to the migration prompt and prepare
-retirement migrations. If a new database or migration dependency cannot be handled by the migration prompt
-without changing specs, stop and report the issue rather than inventing a schema
-or marking the change implemented. Check the migration chain and dependencies;
-if the requested ordering cannot safely support the change, stop and explain.
+Instruct the agent to carry out these steps in order:
 
-After preparing the migrations and their required tracking metadata, update the
-code implementation using the code instructions below. Do not apply the new
-migrations to the working project during preparation, coding, or testing. Run
-new code that needs the target schema against isolated ephemeral databases, not
-the working database. Configure the entire test project, database endpoints,
-migration tracking, and migration symlinks so tests cannot alter working state.
+1. Prepare the migrations as above, then make the required code changes. Do not
+   apply new migrations to the working project during preparation, coding, or
+   testing. Configure test projects, database endpoints, tracking records, and
+   links so tests cannot change working state.
+2. When migrations change, apply the target chains to fresh isolated databases
+   and run relevant new-code tests. Also test upgrades from representative prior
+   databases with histories and data. Check schema and data preservation,
+   tracking, ordering, new-code behavior, and failure and retry or repair
+   behavior as appropriate. Fix failures and rerun affected checks. For a
+   code-only change with no migration, run relevant code checks instead.
+3. Once checks pass, run `4sight spec change implement agent migrate up` to apply
+   the prepared application migrations to the working project. Verify histories
+   and current links. For 4sight developing itself, run the new source with
+   `go run ./cmd/4sight spec change implement agent migrate up` from the project
+   root, then use `go run ./cmd/4sight` for verification and completion. Do not
+   run `4sight upgrade` for these application migrations. If project identification
+   required a user answer, provide it to the migration command on standard input
+   as described in its spec. If the transition cannot be performed safely, stop
+   and explain the staged rollout needed.
+4. Run `4sight spec change implement agent done` only after all required work and
+   verification succeeds. On failure, stop, report partial results and repair
+   needed, and do not mark the change implemented.
 
-When schemas or migrations change, apply the target migration chains to fresh
-ephemeral databases and run the new code's relevant tests. Separately construct
-representative previous-version databases with migration histories and data,
-apply the pending migrations, and verify schema and data preservation, tracking
-records, migration ordering, and relevant new-code behavior. Cover migration
-failure and retry or repair behavior appropriate to the backend. Use representative
-fixtures or safe copies; do not test against a live database. Resolve failures
-and rerun the affected checks before proceeding. For a code-only change with no
-schema migration, perform the relevant code verification without requiring an
-unrelated migration test.
-
-Once code and migration checks pass, migrate the working project and verify the
-result. For 4sight self-hosting, use the newly built binary's `4sight upgrade`
-with its validated embedded internal chains; reconcile source `current` links
-from the authoritative recorded state as specified by upgrade. For ordinary
-application databases, run `4sight migrate up` after any required internal
-upgrade. Verify applied histories and applicable current links. Then run
-`4sight spec change implement agent done` only if all required work succeeds.
-If migration or verification fails, report the failure, partial application,
-and any repair needed; do not mark the change complete. The older binary may
-reject the upgraded internal history. If the migration, deployment, or testing
-cannot safely follow this order, stop and explain the required staged rollout.
-
-When implementing this behavior, verify application tracking-table creation,
-internal upgrade gating, and migration ordering.
+If testing, deployment, or migration cannot safely follow this order, stop and
+explain the required staged rollout. Verify application tracking-table creation,
+internal upgrade gating, and migration ordering when implementing this behavior.
 
 ### Code-only implementation
 
-For an explicitly code-only request, follow the code instructions below; do not
-generate or apply migrations. If the code requires a pending schema migration,
-stop and report the dependency. After verification, run `4sight spec change
-implement agent done` only if all other required work is already complete;
-otherwise report the remaining work without marking the change implemented.
+For an explicitly code-only request, do not generate or apply migrations. If
+code requires a pending migration, stop and report the dependency. After code
+verification, run `4sight spec change implement agent done` only if all other
+required work is complete; otherwise report the remaining work.
 
 ### Schema-only implementation
 
-For an explicitly schema-only request, use `4sight migrate implement prompt
-<path to schema spec relative to schemas dir>` and follow its schema-only
-instructions. Report the pending migration and how to apply it; do not apply it
-or mark the submitted change implemented as part of this request.
+For an explicitly schema-only request, prepare migrations using the rules above,
+report what remains pending and how it will be applied during full
+implementation, and stop. Do not apply migrations or mark the submitted change
+implemented. For 4sight's own internal databases, explain that a newly built
+binary must embed and validate the complete new chains before it can use them.
 
 ### Code instructions
 

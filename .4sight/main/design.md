@@ -6,9 +6,11 @@ For every command in an initialized project, run one shared read-only
 preflight per process. Help and usage remain available without
 preflight, including for uninitialized, outdated, or damaged projects. Initial
 creation by `init` uses its own checks. `upgrade` uses the same validation but
-is allowed to proceed when valid histories are behind; all other database
-commands, including `migrate up`, stop before mutation in that case and tell the
-user to run `4sight upgrade`.
+is allowed to proceed when valid histories are behind. The agent migration
+command also may proceed with valid older histories only when it has identified
+the project as 4sight developing itself and follows its command specification.
+Other database commands stop before mutation and tell the user to run
+`4sight upgrade`.
 
 The binary embeds the complete ordered migration chains and an expected current
 migration ID for each internal database: `4sight_migration` and `spec`. Validate
@@ -21,8 +23,9 @@ Validate both before reporting upgrade required. Unknown, divergent, incomplete,
 newer, malformed or missing history, databases or tracking tables are errors:
 identify the database and offending state, do not tell the user an upgrade alone
 will repair it, and give safe recovery guidance. Never mutate during preflight.
-If both histories are valid but at least one is behind, report upgrade required;
-if both are current, allow the command to proceed.
+If both histories are valid but at least one is behind, report upgrade required,
+except for the explicitly permitted upgrade and self-hosted agent migration
+operations. If both are current, allow the command to proceed.
 
 Serialize validation and database access as needed with upgrade and application
 migration so that a concurrent upgrade cannot invalidate a successful check.

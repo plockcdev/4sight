@@ -75,11 +75,13 @@ the first migration is always 00000000-00000000.sql and creates the database.
 We will have a migrations db called "4sight_migration", this is known as
 the "migrations" db, and it has migration tables, one per database, named
 `<db_name>` (no db type prefix).
-The schema defines the standard application tracking table. `migrate up` creates
+The schema defines the standard application tracking table. `spec change implement agent migrate up` creates
 it as application bookkeeping before the first migration of a new application
-database, subject to its safety checks. Internal migration history is managed
-only by `init` and `upgrade`, using the binary's embedded chains and the
-internal tracking tables. Existing internal current symlinks are optional
+database, subject to its safety checks. Internal migration history is managed by `init` and `upgrade` using the
+binary's embedded chains and the internal tracking tables. When 4sight develops
+itself, the agent migration command applies its own prepared source chains as
+application migrations, using those same tracking tables as specified by that
+command. Existing internal current symlinks are optional
 representations and are reconciled as specified by upgrade, never authoritative.
 Runtime commands never write internal migration SQL files to projects.
 

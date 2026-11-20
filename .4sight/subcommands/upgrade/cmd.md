@@ -42,4 +42,4 @@ a retry must be safe. Report whether migrations and managed files changed.
 
 The binary embeds internal migration chains through its expected migration IDs;
 use the build-time migration assets described by `init`. Help and usage explain
-when to use `init`, `upgrade`, and `migrate up`.
+when to use `init`, `upgrade`, and `spec change implement agent migrate up`.
