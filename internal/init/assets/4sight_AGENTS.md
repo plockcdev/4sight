@@ -58,6 +58,8 @@ saved review. Apply this guidance to reviews following spec change requests too.
 Before handling a spec change request, check for un-imported spec changes. If
 any exist, stop and tell the user to import them or reset the workspace specs.
 
-When the user requests a spec change and provides instructions, run `4sight spec
-change request <prompt>` with their request. Then run `4sight spec change author
-agent prompt` and follow its instructions.
+When the user requests a spec change, including a code-spec change, a
+schema-spec change, or both, run `4sight spec change request <prompt>` with their
+request. Then run `4sight spec change author agent prompt` and follow its
+instructions. A change request that affects both code and schema specs should
+include both in the same authoring workflow.
