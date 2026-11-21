@@ -2,63 +2,41 @@ Do not treat CHANGELOG as a spec input
 
 # 4sight spec driven implementation management of program
 
-## DB Specification
+## Specification layout
 
-The location for db schema spec lives in `.4sight/schemas`, these example files
-are all in the `.4sight/schemas` directory:
+Always read `.4sight/design.md` before working in the project. It describes the
+overall program design.
 
-`dolt_myapp.md` full, current specification for myapp database in a dolt db
+Database schema specifications live in `.4sight/schemas`. Other specifications
+describe the program and its commands:
 
-## Subcommands
+- `.4sight/design.md` and `.4sight/coding.md` contain the overall design and
+  coding standards.
+- `.4sight/main/` contains specifications for the command invoked without a
+  subcommand.
+- `.4sight/subcommands/<name>/` contains specifications for a subcommand and may
+  itself contain a `subcommands/` directory for nested subcommands. A subcommand
+  exists only if its directory contains `cmd.md`.
+- A command's `cmd.md` specifies its arguments, environment variables, flags,
+  behavior, and output. Its optional `design.md` and `coding.md` describe
+  command-specific design and standards.
 
-In general the CLI can have nested subcommands, subcommands can have arguments
-and flags.
-
-Files related to how the commands work and are built can be found according to
-directories in .4sight
-
-- main - for the no args main command
-- subcommands/* -  each subdir under `subcommands` has a name matching the subcommand name
-and has files related to that named subcommand, and possibly a nested
-subcommands dir
-
-if there is no cmd.md for a subcommand dir, then there is no subcommand
-
-## Spec Docs
-
-DB Schema specs are in `.4sight/schemas`, the rest are code implementation
-specs. For more info on how to use db schema specs, see migrate design, the rest
-of this document is focused on code specs.
-
-The program design is split across design.md files within the subcommand
-structure
-
-- `design.md` - design for the entire program
-- `coding.md` - coding standards for entire program
-- `main/design.md` - design specific to the main command
-- `subcommands/*/design.md` - design files for each subcommand
-
-Each subcommand can have subcommands with their own design docs, coding
-standards, and subcommands.
-
-The design is inherited from parent design files, so the entire path of design
-files have to be read to understand a given subcommand's design.
-
-The design may include db usage, but not SQL DDL or statements.
-
-It is OK to not have a design.md or coding.md within a given command directory
-if not needed.
-
-There is a cmd.md that is a peer to the design.md, it gives particular
-specification for the cli command like input args, env vars, flags, etc. how it
-behaves, and how it outputs. This is code specific.
+Read the applicable parent design and coding files along a command's path. Design
+files may describe database usage but must not contain SQL DDL or statements.
+See the migrate design for how database schema specifications are used.
 
 # Implementing Specs
 
-When asked to implement the spec, run `4sight spec implement prompt` and follow
-it. Do not change or import code or schema specs during implementation.
+When asked to implement the spec, including an explicitly code-only or
+schema-only request, run `4sight spec implement prompt` and follow its
+instructions for the requested scope.
+
+Do not change or import code or schema specs during implementation.
 
 # Handling User request for spec review
+
+Before a requested spec review, check for un-imported spec changes. If any
+exist, stop and tell the user to import them or reset the workspace specs.
 
 When the user requests a spec review, run `4sight spec change review agent
 prompt` and follow the instructions.
@@ -68,17 +46,18 @@ review, stop and tell them a review already exists. Ask them to request a
 re-review explicitly. When they request a re-review, run `4sight spec change
 review agent prompt` and follow the instructions for a new numbered attempt.
 
+After saving a review, show the user the change ID, review attempt, readiness,
+and the full change-level review text. If the change is not ready, also present
+all actionable blockers and unresolved decisions from the overall and
+file-level findings, with enough context for the user to respond. Include the
+command `4sight spec change review show <change-id> <attempt>` for the complete
+saved review. Apply this guidance to reviews following spec change requests too.
+
 # Handling spec change requests
 
 Before handling a spec change request, check for un-imported spec changes. If
-any exist, stop and tell the user to import or reset them first.
+any exist, stop and tell the user to import them or reset the workspace specs.
 
 When the user requests a spec change and provides instructions, run `4sight spec
-change request <prompt>` with their request, then run `4sight spec change author
-agent prompt` and follow its instructions. The author prompt directs the agent
-to edit the relevant code or schema specs and import the changes.
-
-After importing authored spec changes, run `4sight spec change review agent
-prompt` and follow its instructions to review the imported changes. If the
-author prompt results in no spec edits, tell the user that no review is needed
-because no specs changed, then stop.
+change request <prompt>` with their request. Then run `4sight spec change author
+agent prompt` and follow its instructions.
