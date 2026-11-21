@@ -40,6 +40,17 @@ asset focused on routing, invocation, and applicable global rules.
 When introducing a managed application database, follow the standard application
 tracking table requirements in the schema spec.
 
+Instruct the agent that Dolt is the default when no different database is
+already established, using file-backed access without a daemon; other backends
+have not been tested. Users should commit Dolt database files alongside
+application changes; a Git-based rollback mechanism is deferred. Preserve
+project-specific requirements. Establish the initial schema spec and
+specify application access as needed. Recognize that implementation prepares and
+applies migrations to bootstrap the working database; do not invent an automatic
+runtime migration requirement. When existing local data needs importing, suggest
+a one-off tool after database setup and before use, not an application spec
+subcommand by default. Preserve established database choices.
+
 Tell the agent the specification directory and file path patterns defined in the
 inherited top-level design, including the distinction between program-wide and
 main-command-specific specs and the nested subcommand layout. Instruct it to

@@ -7,6 +7,16 @@ Do not treat CHANGELOG as a spec input
 Always read `.4sight/design.md` before working in the project. It describes the
 overall program design.
 
+4sight is intended to manage application schema specifications and migrations.
+Unless another database is already established, default to file-backed Dolt
+without a daemon. The spec authoring and implementation prompts establish the
+schema and bootstrap the working database. Do not assume this automatically
+migrates deployed databases or existing local data; discuss a one-off import
+tool when needed after database setup and before using the application.
+Users should commit the Dolt database files alongside application changes.
+Do not assume `git reset` safely restores database state; a Git-based database
+rollback mechanism is deferred.
+
 Database schema specifications live in `.4sight/schemas`. Other specifications
 describe the program and its commands:
 

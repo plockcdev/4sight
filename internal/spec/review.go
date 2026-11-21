@@ -328,6 +328,7 @@ func runChangeReviewPrompt(root string, st *doltStore, out io.Writer) error {
 	projectRoot := filepath.Dir(root)
 	var b strings.Builder
 	b.WriteString("Review the current unsubmitted specification changes for quality and consistency.\n\n")
+	b.WriteString("Dolt is the default when no different database is established, using file-backed access without a daemon; other database backends have not been tested. Users should commit Dolt database files alongside application changes; Git-based database rollback is deferred. Respect project-specific requirements. Treat 4sight's working database bootstrap and migration workflow as established; do not require application-owned runtime migration merely because the schema uses Dolt. Identify missing application access, deployment lifecycle, or existing-data import decisions when they matter to the specified behavior. Check that newly introduced managed databases can use the standard application migration tracking requirements.\n\n")
 	b.WriteString("\nCurrent Workspace DB Specs\n")
 	for _, p := range workspaceDBSpecs {
 		fmt.Fprintf(&b, "- %s\n", p)

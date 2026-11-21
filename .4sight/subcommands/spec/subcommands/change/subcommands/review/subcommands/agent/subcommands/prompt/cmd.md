@@ -16,6 +16,14 @@ describe intended behavior, which may not yet be implemented; do not treat
 missing or incomplete code implementation as a specification defect.
 Check that newly introduced managed databases can use the standard application
 migration tracking requirements in the schema spec.
+Tell the reviewer Dolt is the default when no different database is established,
+using file-backed access without a daemon, and other backends have not been
+tested. Users should commit Dolt database files alongside application changes;
+a Git-based rollback mechanism is deferred. Respect project-specific requirements. Treat
+4sight's working database bootstrap and migration workflow as established;
+do not require an application-owned runtime migration mechanism merely because
+the schema uses Dolt. Identify missing application access, deployment lifecycle,
+or existing-data import decisions when they matter to the specified behavior.
 
 The meta info is id of the current workspace change, the current submitted
 change, and the change prompt (if not empty). Explicitly identify the workspace

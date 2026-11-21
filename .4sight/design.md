@@ -1,5 +1,28 @@
 # 4sight design
 
+## Managed application databases
+
+When an application needs a database and no different database is already
+established, default to Dolt. Preserve an established database choice and
+project-specific requirements; other database backends have not been tested.
+By default use file-backed Dolt without a daemon. Users should commit the Dolt
+database files alongside application changes. A Git-based database rollback or
+snapshot and restore mechanism is not specified by this design and is deferred;
+do not assume that `git reset` safely restores database state.
+
+4sight manages application schema specifications and migration chains. Spec
+authoring establishes the initial schema specification, and implementation
+prepares and applies initial migrations to bootstrap the working database and
+later migrations to evolve it. This workflow does not imply that the application
+automatically creates or upgrades databases at runtime or that deployed
+instances have been migrated. Specify application database access and any
+deployment lifecycle requirements separately when needed.
+
+When existing local data needs to be brought into the established database,
+suggest a one-off import tool to run after database setup and before using the
+application. This is not an application spec subcommand by default; account for
+the project's data and operational needs.
+
 ## Command and specification layout
 
 The CLI supports nested subcommands, each of which may have arguments and flags.
