@@ -2,6 +2,7 @@ package spec
 
 import (
 	"bytes"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +13,9 @@ import (
 	"strings"
 	"time"
 )
+
+//go:embed review_discussion.txt
+var reviewDiscussion string
 
 type reviewState struct{ Workspace, Submitted, Prompt string }
 type reviewFile struct {
@@ -379,6 +383,7 @@ func runChangeReviewPrompt(root string, st *doltStore, out io.Writer) error {
 	}
 	fmt.Fprintf(&b, "\nSubmit a qualitative review of every specification change after the submitted pointer through the workspace pointer, including earlier unsubmitted changes. The overall why, summary, description, details, and review must cover this full range, not just the latest change. Include one file_reviews entry for every file changed in this range. Send one JSON object to `4sight spec change review agent response %s` on stdin. This argument must be the change being reviewed ID shown above. Each file entry needs path, why, summary (max 65 characters), description, details, and body_summary (max 65 characters). Include overall why, summary (max 65 characters), description, details, review, and ready boolean. JSON shape:\n", state.Workspace)
 	b.WriteString("```json\n{\"why\":\"...\",\"summary\":\"...\",\"description\":\"...\",\"details\":\"...\",\"review\":\"...\",\"ready\":true,\"file_reviews\":[{\"path\":\".4sight/subcommands/example/cmd.md\",\"why\":\"...\",\"summary\":\"...\",\"description\":\"...\",\"details\":\"...\",\"body_summary\":\"...\"}]}\n```\n")
+	b.WriteString(reviewDiscussion)
 	_, err = io.WriteString(out, b.String())
 	return err
 }

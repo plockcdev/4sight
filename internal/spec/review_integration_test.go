@@ -19,6 +19,15 @@ func TestReviewAttemptsPreserveHistoryDolt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var prompt bytes.Buffer
+	if err := runChangeReviewPrompt(root, store, &prompt); err != nil {
+		t.Fatalf("review prompt: %v", err)
+	}
+	for _, want := range []string{"one item at a time", "exact saved wording and source", "Do not infer approval from silence", "Do not edit specs or import changes", "Do not include rejected or deferred suggestions", "spec change author agent prompt"} {
+		if !strings.Contains(prompt.String(), want) {
+			t.Errorf("review prompt missing %q", want)
+		}
+	}
 	response := reviewResponse{Why: "why", Summary: "first review", Review: "first opinion", Ready: true, Files: []reviewFile{{Path: ".4sight/coding.md", Why: "why", Summary: "first file review", BodySummary: "first body summary"}}}
 	if err := runChangeReviewResponse(root, store, changeID, response); err != nil {
 		t.Fatalf("save first review: %v", err)

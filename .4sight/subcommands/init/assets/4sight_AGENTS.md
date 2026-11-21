@@ -57,11 +57,10 @@ re-review explicitly. When they request a re-review, run `4sight spec change
 review agent prompt` and follow the instructions for a new numbered attempt.
 
 After saving a review, show the user the change ID, review attempt, readiness,
-and the full change-level review text. If the change is not ready, also present
-all actionable blockers and unresolved decisions from the overall and
-file-level findings, with enough context for the user to respond. Include the
-command `4sight spec change review show <change-id> <attempt>` for the complete
-saved review. Apply this guidance to reviews following spec change requests too.
+and the full change-level review text, and follow the review prompt's
+instructions for discussing findings. Include the command `4sight spec change
+review show <change-id> <attempt>` for the complete saved review. Apply this
+guidance to reviews following spec change requests too.
 
 # Handling spec change requests
 

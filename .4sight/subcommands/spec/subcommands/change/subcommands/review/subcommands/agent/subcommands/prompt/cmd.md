@@ -124,5 +124,27 @@ Require the agent to run `4sight spec change review agent response
 <workspace_change_id>` with the complete review in the required response
 command format with all its declared constraints. The argument must be the
 workspace change ID rendered in the meta info. Check that the command succeeds.
-After it succeeds, the agent must include the overall review and per-file
-findings in its user-facing reply.
+After it succeeds, the agent must present the overall review and discuss
+actionable overall and per-file findings as specified below.
+
+## Discuss review feedback
+
+After saving the review, show the change ID, attempt, readiness, and full
+change-level review text. Provide `4sight spec change review show <change-id>
+<attempt>` for the complete saved review. Then walk the user through actionable
+findings and unresolved decisions from the overall and file-level reviews one
+item at a time. For each item, present its exact saved wording and source,
+relevant spec content when needed, and a specific suggested resolution. Allow
+the user to discuss, approve, modify, reject, or defer the suggestion before
+moving to the next item. Do not infer approval from silence. Keep track of each
+decision and preserve the saved review unchanged.
+
+Do not edit specs or import changes during this discussion. When the user
+finishes or stops the walkthrough, gather the agreed fixes into one request,
+including the feedback context, decisions, and constraints needed to author the
+changes. Do not include rejected or deferred suggestions as approved fixes.
+If there are agreed fixes, run `4sight spec change request <prompt>` with that
+request, then run `4sight spec change author agent prompt` and follow its
+instructions, including import and the subsequent review. If there are no
+agreed fixes, stop without creating a request. If there are no actionable
+findings or unresolved decisions, stop after presenting the review.
