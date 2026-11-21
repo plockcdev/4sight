@@ -51,6 +51,11 @@ nullability, uniqueness, or other constraints without requiring an `_id`
 suffix. For example, describe `current_filepath` as a reference to `filepaths`;
 the SQL migration prompt defines the physical SQL column name.
 
+When working on a schema without a competing design pattern, suggest that each
+entity has a core identity table, with optional data stored in one-to-one
+extension tables keyed by the entity ID. Present this as a flexible default,
+not a requirement that overrides an established schema design.
+
 When referring to a schema from a code spec, call it the schema spec without
 naming its filename. Use inherited spec design to locate it.
 
