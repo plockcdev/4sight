@@ -1,0 +1,1 @@
+Run `4sight garbage_collect` to review and permanently delete completed trashed databases, or provide a trash name to select one. Confirm interactively with `yes`.

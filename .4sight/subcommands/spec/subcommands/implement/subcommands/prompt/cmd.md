@@ -201,7 +201,8 @@ subcommand, it does not need a cmd.md specification. This subcommand should not
 have an error exit.
 
 The help should list all the available subcommands, options, and arguments which
-includes the usage command, but not contents of any USAGE docs.
+includes the top-level usage command and the --usage flag, but not contents of
+any USAGE docs. Do not list a usage subcommand under other commands.
 
 Help is shown for any argument syntax issues. Usage / Semantic argument issues
 do not show the help, but should provide enough context about the error that an
@@ -223,10 +224,10 @@ practical, with examples where helpful.
 Also maintain `docs/USAGE_<subcommand>.txt` files for each subcommand
 (recursively)
 
-the "usage" subcommand at the top level (or the --usage flag on the main command
-or any subcommand) will simply print the relevant usage file. If a usage
-argument is present, then any other data arguments or flags are an error (show
-help)
+Provide a "usage" subcommand only at the top level. Support the --usage flag
+on the main command and every subcommand. Each prints the relevant usage file.
+Do not provide nested "usage" subcommands. If a usage argument is present,
+then any other data arguments or flags are an error (show help).
 
 Embed the usage docs into the application
 

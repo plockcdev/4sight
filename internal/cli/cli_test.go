@@ -11,8 +11,8 @@ func TestRunHelp(t *testing.T) {
 	stdout, stderr := capture(t, func() int {
 		return run([]string{"--help"}, deps{})
 	})
-	if !strings.Contains(stdout, "migrate") {
-		t.Fatalf("help missing migrate: %s", stdout)
+	if !strings.Contains(stdout, "upgrade") {
+		t.Fatalf("help missing upgrade: %s", stdout)
 	}
 	if !strings.Contains(stdout, "spec") {
 		t.Fatalf("help missing spec: %s", stdout)
@@ -28,37 +28,6 @@ func TestRunUnknownCommand(t *testing.T) {
 	})
 	if !strings.Contains(stderr, `unknown command "nope"`) {
 		t.Fatalf("stderr %q", stderr)
-	}
-}
-
-func TestMigrateUpRejectsArgs(t *testing.T) {
-	code, _, stderr := captureCode(t, func() int {
-		return run([]string{"migrate", "up", "spec"}, deps{})
-	})
-	if code != 1 {
-		t.Fatalf("code %d", code)
-	}
-	if !strings.Contains(stderr, "does not take arguments") {
-		t.Fatalf("stderr %q", stderr)
-	}
-}
-
-func TestMigrateUpDispatches(t *testing.T) {
-	called := ""
-	code, _, stderr := captureCode(t, func() int {
-		return run([]string{"migrate", "up"}, deps{
-			getwd: func() (string, error) { return "/tmp/repo", nil },
-			up: func(cwd string) error {
-				called = cwd
-				return nil
-			},
-		})
-	})
-	if code != 0 {
-		t.Fatalf("code %d stderr %q", code, stderr)
-	}
-	if called != "/tmp/repo" {
-		t.Fatalf("cwd %q", called)
 	}
 }
 
@@ -96,36 +65,6 @@ func captureCode(t *testing.T, fn func() int) (int, string, string) {
 		t.Fatal(err)
 	}
 	return code, string(stdout), string(stderr)
-}
-
-func TestHelpTopicMigrateUp(t *testing.T) {
-	stdout, _ := capture(t, func() int {
-		return run([]string{"help", "migrate", "up"}, deps{})
-	})
-	if !strings.Contains(stdout, "4sight migrate up") {
-		t.Fatalf("help %q", stdout)
-	}
-}
-
-func TestHelpTopicMigrateImplementPrompt(t *testing.T) {
-	stdout, _ := capture(t, func() int {
-		return run([]string{"help", "migrate", "implement", "prompt"}, deps{})
-	})
-	if !strings.Contains(stdout, "4sight migrate implement prompt") {
-		t.Fatalf("help %q", stdout)
-	}
-}
-
-func TestMigrateImplementPromptRequiresArg(t *testing.T) {
-	code, _, stderr := captureCode(t, func() int {
-		return run([]string{"migrate", "implement", "prompt"}, deps{})
-	})
-	if code != 1 {
-		t.Fatalf("code %d", code)
-	}
-	if !strings.Contains(stderr, "requires exactly one schema spec path") {
-		t.Fatalf("stderr %q", stderr)
-	}
 }
 
 func TestHelpTopicSpecImplementPrompt(t *testing.T) {
@@ -319,21 +258,66 @@ func TestSpecChangeUnknownCommand(t *testing.T) {
 	}
 }
 
-func TestMigrateImplementPromptDispatches(t *testing.T) {
-	called := ""
-	code, _, stderr := captureCode(t, func() int {
-		return run([]string{"migrate", "implement", "prompt", "dolt_spec.md"}, deps{
-			getwd: func() (string, error) { return "/tmp/repo", nil },
-			implementPrompt: func(cwd, schemaRel string) error {
-				called = cwd + " " + schemaRel
-				return nil
-			},
+func TestNewCommandHelpListsUsage(t *testing.T) {
+	for _, args := range [][]string{{"upgrade", "--help"}, {"garbage_collect", "--help"}, {"spec", "change", "implement", "agent", "migrate", "up", "--help"}} {
+		t.Run(strings.Join(args, "/"), func(t *testing.T) {
+			code, stdout, _ := captureCode(t, func() int { return run(args, deps{}) })
+			if code != 0 || strings.Contains(stdout, "  usage ") || !strings.Contains(stdout, "--usage") {
+				t.Fatalf("help code %d: %s", code, stdout)
+			}
 		})
-	})
-	if code != 0 {
-		t.Fatalf("code %d stderr %q", code, stderr)
 	}
-	if called != "/tmp/repo dolt_spec.md" {
-		t.Fatalf("called %q", called)
+}
+
+func TestAllCommandHelpTopicsExposeUsage(t *testing.T) {
+	for topic := range helpTopics {
+		if topic == "" {
+			continue
+		}
+		t.Run(strings.ReplaceAll(topic, " ", "/"), func(t *testing.T) {
+			args := append(strings.Fields(topic), "--help")
+			code, stdout, stderr := captureCode(t, func() int { return run(args, deps{}) })
+			if code != 0 || !strings.Contains(stdout, "--usage") {
+				t.Fatalf("help code=%d stdout=%q stderr=%q", code, stdout, stderr)
+			}
+			if strings.Contains(stdout, "  usage ") {
+				t.Fatalf("nested help lists usage command: %q", stdout)
+			}
+		})
+	}
+}
+
+func TestUsageRouting(t *testing.T) {
+	for topic := range helpTopics {
+		t.Run(strings.ReplaceAll("flag/"+topic, " ", "/"), func(t *testing.T) {
+			args := append(strings.Fields(topic), "--usage")
+			code, stdout, stderr := captureCode(t, func() int { return run(args, deps{}) })
+			if code != 0 || stdout == "" {
+				t.Fatalf("usage code=%d stdout=%q stderr=%q", code, stdout, stderr)
+			}
+		})
+	}
+	code, command, _ := captureCode(t, func() int { return run([]string{"usage"}, deps{}) })
+	flagCode, flag, _ := captureCode(t, func() int { return run([]string{"--usage"}, deps{}) })
+	if code != 0 || flagCode != 0 || command != flag {
+		t.Fatalf("top-level usage differs: command=%d flag=%d", code, flagCode)
+	}
+	if _, handled := runUsage([]string{"spec", "usage"}); handled {
+		t.Fatal("nested usage was treated as a usage command")
+	}
+	code, _, _ = captureCode(t, func() int { return run([]string{"spec", "--usage", "extra"}, deps{}) })
+	if code == 0 {
+		t.Fatal("usage with an extra argument succeeded")
+	}
+}
+
+func TestParentHelpListsUsage(t *testing.T) {
+	for _, topic := range []string{"spec", "spec implement", "spec change", "spec change implement", "spec change implement agent", "spec change implement agent migrate", "spec change review", "spec change review agent", "spec change author", "spec change author agent"} {
+		t.Run(strings.ReplaceAll(topic, " ", "/"), func(t *testing.T) {
+			code, stdout, _ := captureCode(t, func() int { return run(strings.Fields(topic), deps{}) })
+			if code != 0 || strings.Contains(stdout, "  usage ") || !strings.Contains(stdout, "--usage") {
+				t.Fatalf("help code %d: %s", code, stdout)
+			}
+		})
 	}
 }

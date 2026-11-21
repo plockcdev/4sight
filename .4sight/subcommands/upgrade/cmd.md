@@ -21,16 +21,24 @@ the recorded and actual state can safely be reconciled. Preserve application
 migration records and do not alter application databases, app migration files,
 or their current/submitted pointers. Internal history is authoritative in `4sight_migration.4sight_migration` and
 `4sight_migration.spec`; compare it with embedded chains, not symlinks. Do not
-write internal migration SQL files or create internal symlinks. If an existing
-internal `current` symlink is present, reconcile it after each recorded migration
-to the corresponding existing local migration file, but only after verifying its
-filename, parent chain, and bytes match the embedded migration. Never follow or
-replace an unsafe link. If the file is missing or differs, leave the link alone,
-report the conflict, and fail without claiming success; do not apply more
-migrations. When retrying after an interruption, derive the last applied ID from
-the tracking table and repair a stale valid link before applying more migrations.
-A database migration already recorded must not be replayed merely to repair a
-link. If no internal current symlink exists, none is required or created.
+write internal migration SQL files or create internal symlinks.
+
+In an ordinary application project, ignore and leave untouched any legacy
+internal migration files and symlinks, including `current`; do not require or
+reconcile them. Determine project identity using the rules in the spec design;
+if identity requires a user answer, stop and ask before mutation.
+
+When 4sight is developing itself, existing internal `current` symlinks represent
+source migration state, not authoritative applied history. If one is present,
+reconcile it after each recorded migration to the corresponding existing local
+migration file, but only after verifying its filename, parent chain, and bytes
+match the embedded migration. Never follow or replace an unsafe link. If the
+file is missing or differs, leave the link alone, report the conflict, and fail
+without claiming success; do not apply more migrations. When retrying after an
+interruption, derive the last applied ID from the tracking table and repair a
+stale valid link before applying more migrations. A recorded migration must not
+be replayed merely to repair a link. If no internal current symlink exists,
+none is required or created.
 
 After successful migration, apply the repeatable setup rules of `init`: ensure
 `.4sight/changes` is in `.gitignore`, maintain the managed root AGENTS section,

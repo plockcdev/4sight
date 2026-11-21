@@ -1,0 +1,1 @@
+After preparing and testing submitted migrations, use `4sight spec change implement agent migrate up` to apply them.

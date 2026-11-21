@@ -3,14 +3,12 @@ package migrate
 import (
 	"cmp"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
-	"time"
 )
 
 const (
@@ -22,14 +20,6 @@ const (
 )
 
 var migrationIDRe = regexp.MustCompile(`^\d{8}$`)
-var migrationSuffixRe = regexp.MustCompile(`^\d{4}$`)
-
-type store interface {
-	databaseExists(name string) (bool, error)
-	applyFile(path string) error
-	trackingTableExists(table string) (bool, error)
-	insertApplied(table, id string, at time.Time) error
-}
 
 type database struct {
 	dbType string
@@ -45,150 +35,6 @@ type migrationFile struct {
 	id       string
 	parentID string
 	path     string
-}
-
-func Up(cwd string) error {
-	root, err := findMetadataRoot(cwd)
-	if err != nil {
-		return err
-	}
-	return runUp(root, newDoltStore(filepath.Join(root, "db")), time.Now, os.Stdout)
-}
-
-func runUp(metadataRoot string, st store, now func() time.Time, stdout io.Writer) error {
-	dbs, err := listSchemaDatabases(filepath.Join(metadataRoot, "schemas"))
-	if err != nil {
-		return err
-	}
-	for _, db := range dbs {
-		applied, err := migrateDatabase(metadataRoot, db, st, now)
-		if err != nil {
-			return err
-		}
-		for _, id := range applied {
-			if _, err := fmt.Fprintf(stdout, "applied %s %s\n", db.key(), id); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func migrateDatabase(metadataRoot string, db database, st store, now func() time.Time) ([]string, error) {
-	dir := filepath.Join(metadataRoot, "migrations", db.key())
-	if _, err := os.Stat(filepath.Join(dir, initialMigrationFile)); err != nil {
-		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("%s: missing %s in %s", db.key(), initialMigrationFile, dir)
-		}
-		return nil, fmt.Errorf("%s: check %s in %s: %w", db.key(), initialMigrationFile, dir, err)
-	}
-
-	byID, byParent, err := listMigrationFiles(dir)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %s: %w", db.key(), dir, err)
-	}
-
-	submittedName, err := resolveLink(dir, submittedName)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("%s: missing submitted symlink to an existing file in %s", db.key(), dir)
-		}
-		return nil, fmt.Errorf("%s: submitted in %s: %w", db.key(), dir, err)
-	}
-	submitted, ok := fileByName(byID, submittedName)
-	if !ok {
-		return nil, fmt.Errorf("%s: submitted %s is not a migration file in %s", db.key(), submittedName, dir)
-	}
-
-	currentNameResolved, currentErr := resolveLink(dir, currentName)
-	var current *migrationFile
-	switch {
-	case currentErr == nil:
-		var ok bool
-		current, ok = fileByName(byID, currentNameResolved)
-		if !ok {
-			return nil, fmt.Errorf("%s: current %s is not a migration file in %s", db.key(), currentNameResolved, dir)
-		}
-	case os.IsNotExist(currentErr):
-		// uninitialized until the database-exists check below
-	default:
-		return nil, fmt.Errorf("%s: current in %s: %w", db.key(), dir, currentErr)
-	}
-
-	if err := validateSubmittedToCurrent(byID, byParent, submitted, current); err != nil {
-		return nil, fmt.Errorf("%s: %s: %w", db.key(), dir, err)
-	}
-
-	if current == nil {
-		exists, err := st.databaseExists(db.name)
-		if err != nil {
-			return nil, fmt.Errorf("%s: check database %s (dir %s): %w", db.key(), db.name, dir, err)
-		}
-		if exists {
-			return nil, fmt.Errorf("%s: database %s exists but current symlink is missing in %s", db.key(), db.name, dir)
-		}
-	}
-
-	if current != nil && current.name == submitted.name {
-		return nil, nil
-	}
-
-	next, err := startingMigration(byID, byParent, current)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %s: %w", db.key(), dir, err)
-	}
-
-	var applied []string
-	for {
-		if err := st.applyFile(next.path); err != nil {
-			return applied, fmt.Errorf("%s: apply %s: %w", db.key(), next.path, err)
-		}
-		if err := updateCurrent(dir, next.name); err != nil {
-			return applied, fmt.Errorf("%s: update current in %s: %w", db.key(), dir, err)
-		}
-		table := db.name
-		ok, err := st.trackingTableExists(table)
-		if err != nil {
-			return applied, fmt.Errorf("%s: check tracking table %s.%s (dir %s): %w", db.key(), migrationsDB, table, dir, err)
-		}
-		if !ok {
-			return applied, fmt.Errorf("%s: 4sight_migration table %s is missing (dir %s)", db.key(), table, dir)
-		}
-		if err := st.insertApplied(table, next.id, now().UTC().Truncate(time.Second)); err != nil {
-			return applied, fmt.Errorf("%s: record %s in %s.%s (dir %s): %w", db.key(), next.id, migrationsDB, table, dir, err)
-		}
-		applied = append(applied, next.id)
-		if next.name == submitted.name {
-			return applied, nil
-		}
-		next, err = childOf(byParent, next.id)
-		if err != nil {
-			return applied, fmt.Errorf("%s: %s: %w", db.key(), dir, err)
-		}
-	}
-}
-
-func startingMigration(byID map[string]*migrationFile, byParent map[string][]*migrationFile, current *migrationFile) (*migrationFile, error) {
-	if current == nil {
-		next, ok := byID[initialID]
-		if !ok {
-			return nil, fmt.Errorf("missing %s", initialMigrationFile)
-		}
-		return next, nil
-	}
-	return childOf(byParent, current.id)
-}
-
-func childOf(byParent map[string][]*migrationFile, parentID string) (*migrationFile, error) {
-	kids := byParent[parentID]
-	switch len(kids) {
-	case 0:
-		return nil, fmt.Errorf("no migration with parent id %s", parentID)
-	case 1:
-		return kids[0], nil
-	default:
-		return nil, fmt.Errorf("multiple migrations have parent id %s", parentID)
-	}
 }
 
 func validateSubmittedToCurrent(byID map[string]*migrationFile, byParent map[string][]*migrationFile, submitted, current *migrationFile) error {
@@ -274,7 +120,7 @@ func listMigrationFiles(dir string) (map[string]*migrationFile, map[string][]*mi
 		if entry.IsDir() || entry.Name() == currentName || entry.Name() == submittedName {
 			continue
 		}
-		if !strings.HasSuffix(entry.Name(), ".sql") {
+		if !strings.HasSuffix(entry.Name(), ".sql") && !strings.HasSuffix(entry.Name(), ".delete") {
 			continue
 		}
 		file, err := parseMigrationName(entry.Name())
@@ -295,6 +141,9 @@ func listMigrationFiles(dir string) (map[string]*migrationFile, map[string][]*mi
 
 func parseMigrationName(name string) (*migrationFile, error) {
 	stem, ok := strings.CutSuffix(name, ".sql")
+	if !ok {
+		stem, ok = strings.CutSuffix(name, ".delete")
+	}
 	if !ok {
 		return nil, fmt.Errorf("invalid migration filename %q", name)
 	}
@@ -337,10 +186,15 @@ func resolveLink(dir, name string) (string, error) {
 
 func updateCurrent(dir, filename string) error {
 	link := filepath.Join(dir, currentName)
-	if err := os.Remove(link); err != nil && !os.IsNotExist(err) {
+	tmp := filepath.Join(dir, ".4sight-current-new")
+	if err := os.Symlink(filename, tmp); err != nil {
 		return err
 	}
-	return os.Symlink(filename, link)
+	if err := os.Rename(tmp, link); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 func fileByName(byID map[string]*migrationFile, name string) (*migrationFile, bool) {

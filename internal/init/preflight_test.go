@@ -25,3 +25,18 @@ func TestValidateHistory(t *testing.T) {
 		})
 	}
 }
+
+func TestParseIdentityAnswer(t *testing.T) {
+	for _, tc := range []struct {
+		answer    string
+		self, bad bool
+	}{
+		{"4sight\n", true, false}, {"application\n", false, false},
+		{"4sight\napplication\n", false, true}, {"4sight", false, true}, {"", false, true},
+	} {
+		self, err := parseIdentityAnswer(tc.answer)
+		if self != tc.self || (err != nil) != tc.bad {
+			t.Fatalf("%q: self=%t error=%v", tc.answer, self, err)
+		}
+	}
+}

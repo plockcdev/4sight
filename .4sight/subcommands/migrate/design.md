@@ -81,8 +81,10 @@ database, subject to its safety checks. Internal migration history is managed by
 binary's embedded chains and the internal tracking tables. When 4sight develops
 itself, the agent migration command applies its own prepared source chains as
 application migrations, using those same tracking tables as specified by that
-command. Existing internal current symlinks are optional
-representations and are reconciled as specified by upgrade, never authoritative.
+command. Existing internal current symlinks are optional representations, never
+authoritative. Upgrade leaves them untouched in ordinary application projects;
+in the 4sight source repository, reconcile them as specified by upgrade and
+the self-hosted agent migration command.
 Runtime commands never write internal migration SQL files to projects.
 
 

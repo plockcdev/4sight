@@ -12,8 +12,6 @@ import (
 
 type deps struct {
 	getwd                        func() (string, error)
-	up                           func(cwd string) error
-	implementPrompt              func(cwd, schemaRel string) error
 	specExport                   func(cwd string, loc []string) error
 	specSyncCheck                func(cwd string) error
 	specSyncDiff                 func(cwd string) error
@@ -32,23 +30,31 @@ type deps struct {
 	specChangeAuthorPrompt       func(cwd string) error
 	specChangeBody               func(cwd, changeID string, locator []string) error
 	init                         func(cwd string) error
+	upgrade                      func(cwd string) error
+	agentMigrate                 func(cwd string) error
+	garbageCollect               func(cwd, name string) error
 }
 
 func Run(args []string) int {
 	getwd := os.Getwd
-	if len(args) > 0 && (args[0] == "spec" || (args[0] == "migrate" && len(args) > 1 && args[1] == "up")) {
+	var release func()
+	defer func() {
+		if release != nil {
+			release()
+		}
+	}()
+	agentMigration := len(args) >= 6 && strings.Join(args[:6], " ") == "spec change implement agent migrate up"
+	if len(args) > 0 && !agentMigration && (args[0] == "spec" || args[0] == "garbage_collect") {
 		getwd = func() (string, error) {
 			cwd, err := os.Getwd()
-			if err == nil {
-				err = initcmd.Preflight(cwd)
+			if err == nil && release == nil {
+				release, err = initcmd.AcquirePreflight(cwd, false)
 			}
 			return cwd, err
 		}
 	}
 	return run(args, deps{
 		getwd:                        getwd,
-		up:                           migrate.Up,
-		implementPrompt:              migrate.ImplementPrompt,
 		specExport:                   spec.Export,
 		specSyncCheck:                spec.SyncCheck,
 		specSyncDiff:                 spec.SyncDiff,
@@ -67,6 +73,9 @@ func Run(args []string) int {
 		specChangeAuthorPrompt:       spec.ChangeAuthorAgentPrompt,
 		specChangeBody:               spec.ChangeBody,
 		init:                         initcmd.Run,
+		upgrade:                      initcmd.Upgrade,
+		agentMigrate:                 initcmd.MigrateSelf,
+		garbageCollect:               func(cwd, name string) error { return migrate.GarbageCollect(cwd, name, os.Stdin, os.Stdout) },
 	})
 }
 
@@ -76,6 +85,16 @@ func run(args []string, d deps) int {
 	}
 	if code, handled := runExplicitHelp(args); handled {
 		return code
+	}
+	switch strings.Join(args, " ") {
+	case "spec", "spec implement", "spec change", "spec change implement", "spec change implement agent", "spec change implement agent migrate", "spec change review", "spec change review agent", "spec change author", "spec change author agent":
+		return runHelpTopic(args)
+	}
+	if len(args) > 1 && args[len(args)-1] == "help" {
+		topic := strings.Join(args[:len(args)-1], " ")
+		if helpTopics[topic] && plainUsageCommands[topic] {
+			return runHelpTopic(args[:len(args)-1])
+		}
 	}
 	if len(args) == 0 {
 		printMainHelp()
@@ -88,12 +107,42 @@ func run(args []string, d deps) int {
 		}
 		printMainHelp()
 		return 0
-	case "migrate":
-		return parseMigrate(args[1:], d)
 	case "spec":
 		return parseSpec(args[1:], d)
 	case "init":
 		return parseInit(args[1:], d)
+	case "upgrade":
+		if len(args) != 1 {
+			fmt.Fprintln(os.Stderr, "4sight upgrade: takes no arguments")
+			return 1
+		}
+		cwd, err := d.getwd()
+		if err == nil {
+			err = d.upgrade(cwd)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "4sight upgrade:", err)
+			return 1
+		}
+		return 0
+	case "garbage_collect":
+		if len(args) > 2 {
+			fmt.Fprintln(os.Stderr, "4sight garbage_collect: expected at most one trash name")
+			return 1
+		}
+		name := ""
+		if len(args) == 2 {
+			name = args[1]
+		}
+		cwd, err := d.getwd()
+		if err == nil {
+			err = d.garbageCollect(cwd, name)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "4sight garbage_collect:", err)
+			return 1
+		}
+		return 0
 	}
 	if strings.HasPrefix(args[0], "-") {
 		printMainHelp()
@@ -122,21 +171,29 @@ func parseInit(args []string, d deps) int {
 }
 
 func runHelpTopic(topic []string) int {
-	switch strings.Join(topic, " ") {
-	case "migrate":
-		printMigrateHelp()
+	name := strings.Join(topic, " ")
+	if helpTopics[name] && name != "upgrade" && name != "garbage_collect" && name != "spec change implement agent migrate" && name != "spec change implement agent migrate up" {
+		defer func() {
+			if name != "spec implement prompt" {
+				fmt.Print("\nOptions:\n  --usage           Show usage guidance\n")
+			}
+		}()
+	}
+	switch name {
+	case "upgrade":
+		fmt.Print("4sight upgrade\n\nUpgrade internal databases and refresh managed setup.\n\nOptions:\n  -h, --help        Show this help\n  --usage           Show usage guidance\n")
+		return 0
+	case "garbage_collect":
+		fmt.Print("4sight garbage_collect [trash_name]\n\nPermanently delete completed trashed databases after interactive confirmation.\n\nOptions:\n  -h, --help        Show this help\n  --usage           Show usage guidance\n")
+		return 0
+	case "spec change implement agent migrate":
+		fmt.Print("4sight spec change implement agent migrate\n\nCommands:\n  up                Apply prepared migrations\n\nOptions:\n  -h, --help        Show this help\n  --usage           Show usage guidance\n")
+		return 0
+	case "spec change implement agent migrate up":
+		fmt.Print("4sight spec change implement agent migrate up\n\nApply prepared migrations after implementation tests pass.\n\nOptions:\n  -h, --help        Show this help\n  --usage           Show usage guidance\n")
 		return 0
 	case "init":
 		printInitHelp()
-		return 0
-	case "migrate up":
-		printMigrateUpHelp()
-		return 0
-	case "migrate implement":
-		printMigrateImplementHelp()
-		return 0
-	case "migrate implement prompt":
-		printMigrateImplementPromptHelp()
 		return 0
 	case "spec":
 		printSpecHelp()
@@ -177,6 +234,9 @@ func runHelpTopic(topic []string) int {
 	case "spec change submit":
 		printSpecChangeSubmitHelp()
 		return 0
+	case "spec change implement", "spec change implement agent":
+		printSpecChangeImplementHelp()
+		return 0
 	case "spec change implement agent done":
 		printSpecChangeImplementationDoneHelp()
 		return 0
@@ -211,84 +271,9 @@ func runHelpTopic(topic []string) int {
 		printSpecChangeBodyHelp()
 		return 0
 	default:
-		fmt.Fprintf(os.Stderr, "4sight: unknown help topic %q (try: migrate, migrate up, migrate implement prompt, spec, spec export, spec sync-check, spec sync-diff, spec implement prompt, spec change, spec change import, spec change list, spec change request, spec change status, spec change author agent prompt)\n", strings.Join(topic, " "))
+		fmt.Fprintf(os.Stderr, "4sight: unknown help topic %q (try: init, upgrade, garbage_collect, spec)\n", strings.Join(topic, " "))
 		return 1
 	}
-}
-
-func parseMigrate(args []string, d deps) int {
-	if len(args) == 0 {
-		printMigrateHelp()
-		return 0
-	}
-	switch args[0] {
-	case "-h", "--help":
-		printMigrateHelp()
-		return 0
-	case "up":
-		return parseMigrateUp(args[1:], d)
-	case "implement":
-		return parseMigrateImplement(args[1:], d)
-	}
-	if strings.HasPrefix(args[0], "-") {
-		printMigrateHelp()
-		return 1
-	}
-	printMigrateHelp()
-	fmt.Fprintf(os.Stderr, "4sight migrate: unknown command %q\n", args[0])
-	return 1
-}
-
-func parseMigrateImplement(args []string, d deps) int {
-	if len(args) == 0 {
-		printMigrateImplementHelp()
-		return 0
-	}
-	switch args[0] {
-	case "-h", "--help":
-		printMigrateImplementHelp()
-		return 0
-	case "prompt":
-		return parseMigrateImplementPrompt(args[1:], d)
-	}
-	if strings.HasPrefix(args[0], "-") {
-		printMigrateImplementHelp()
-		return 1
-	}
-	printMigrateImplementHelp()
-	fmt.Fprintf(os.Stderr, "4sight migrate implement: unknown command %q\n", args[0])
-	return 1
-}
-
-func parseMigrateImplementPrompt(args []string, d deps) int {
-	if len(args) == 1 {
-		switch args[0] {
-		case "-h", "--help":
-			printMigrateImplementPromptHelp()
-			return 0
-		}
-	}
-	for _, arg := range args {
-		if strings.HasPrefix(arg, "-") {
-			printMigrateImplementPromptHelp()
-			return 1
-		}
-	}
-	if len(args) != 1 {
-		printMigrateImplementPromptHelp()
-		fmt.Fprintln(os.Stderr, "4sight migrate implement prompt: requires exactly one schema spec path")
-		return 1
-	}
-	cwd, err := d.getwd()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "4sight migrate implement prompt:", err)
-		return 1
-	}
-	if err := d.implementPrompt(cwd, args[0]); err != nil {
-		fmt.Fprintln(os.Stderr, "4sight migrate implement prompt:", err)
-		return 1
-	}
-	return 0
 }
 
 func parseSpec(args []string, d deps) int {
@@ -585,6 +570,20 @@ func parseSpecChangeImplement(args []string, d deps) int {
 		printSpecChangeImplementHelp()
 		return 0
 	case "agent":
+		if len(args) == 2 && args[1] == "migrate" {
+			return runHelpTopic([]string{"spec", "change", "implement", "agent", "migrate"})
+		}
+		if len(args) == 3 && args[1] == "migrate" && args[2] == "up" {
+			cwd, err := d.getwd()
+			if err == nil {
+				err = d.agentMigrate(cwd)
+			}
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "4sight spec change implement agent migrate up:", err)
+				return 1
+			}
+			return 0
+		}
 		if len(args) == 1 {
 			printSpecChangeImplementHelp()
 			return 0
@@ -863,45 +862,15 @@ func parseSpecSyncCheck(args []string, d deps) int {
 	return 0
 }
 
-func parseMigrateUp(args []string, d deps) int {
-	if len(args) == 1 {
-		switch args[0] {
-		case "-h", "--help":
-			printMigrateUpHelp()
-			return 0
-		}
-	}
-	for _, arg := range args {
-		if strings.HasPrefix(arg, "-") {
-			printMigrateUpHelp()
-			return 1
-		}
-	}
-	if len(args) > 0 {
-		printMigrateUpHelp()
-		fmt.Fprintln(os.Stderr, "4sight migrate up: does not take arguments")
-		return 1
-	}
-	cwd, err := d.getwd()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "4sight migrate up:", err)
-		return 1
-	}
-	if err := d.up(cwd); err != nil {
-		fmt.Fprintln(os.Stderr, "4sight migrate up:", err)
-		return 1
-	}
-	return 0
-}
-
 func printMainHelp() {
 	fmt.Print(`4sight — project tooling
 
 Commands:
   init              Initialize a repository for 4sight
+  upgrade           Upgrade internal databases
+  garbage_collect   Permanently delete completed trashed databases
   help              Show this help
   usage             Show practical usage guidance
-  migrate           Apply database schema migrations
   spec              Import and manage specification bodies
 
 Global options:
@@ -922,47 +891,6 @@ Options:
 `)
 }
 
-func printMigrateHelp() {
-	fmt.Print(`4sight migrate
-
-Apply SQL migrations so databases match the submitted schema.
-
-Commands:
-  up                Apply pending migrations
-  implement         Generate migration implementation prompts
-
-Options:
-  -h, --help        Show this help
-`)
-}
-
-func printMigrateImplementHelp() {
-	fmt.Print(`4sight migrate implement
-
-Generate prompts for creating migration SQL from schema specs.
-
-Commands:
-  prompt            Output a prompt for an agent to generate a migration
-
-Options:
-  -h, --help        Show this help
-`)
-}
-
-func printMigrateImplementPromptHelp() {
-	fmt.Print(`4sight migrate implement prompt <schema>
-
-Output a prompt instructing an agent to read the schema specification and
-related design documents, then generate a migration SQL file.
-
-The schema argument is a path relative to .4sight/schemas, such as
-dolt_spec.md or dolt_spec.
-
-Options:
-  -h, --help        Show this help
-`)
-}
-
 func printSpecHelp() {
 	fmt.Print(`4sight spec
 
@@ -977,7 +905,6 @@ Commands:
   sync-check        Compare database bodies with on-disk spec files
   sync-diff         Show unified diffs for spec differences
   implement         Generate implementation prompts from specs
-  usage             Show usage guidance
 
 Options:
   -h, --help        Show this help
@@ -1000,16 +927,14 @@ Options:
 func printSpecImplementPromptHelp() {
 	fmt.Print(`4sight spec implement prompt
 
-Output a prompt instructing an agent to read design.md, cmd.md, and coding.md
-bodies from the spec database, plus schema specifications on disk, then
-update application code to match without changing the schema. If a schema
-spec or migration change is required, the agent should stop and report the
-gap.
+Output instructions for implementing submitted code and schema specifications,
+preparing and testing migrations, and applying them after verification.
 
 This command takes no arguments.
 
 Options:
   -h, --help        Show this help
+  --usage           Show usage guidance
 `)
 }
 
@@ -1026,7 +951,6 @@ Commands:
   implement         Mark a submitted change as implemented
   review            Review changes to the specification
   author            Prepare prompts for authoring spec changes
-  usage             Show usage guidance
 
 Options:
   -h, --help        Show this help
@@ -1106,6 +1030,7 @@ Mark the current submitted change as implemented.
 
 Commands:
   agent done        Advance the implemented change pointer
+  agent migrate up  Apply prepared database migrations
 
 Options:
   -h, --help        Show this help
@@ -1207,19 +1132,6 @@ Prints two sections. The import section shows "4sight spec change import"
 when any spec differs, which overwrites the database from disk. The
 export section lists "4sight spec export <command...> <file>" for each
 workspace body that differs from disk.
-
-This command takes no arguments.
-
-Options:
-  -h, --help        Show this help
-`)
-}
-
-func printMigrateUpHelp() {
-	fmt.Print(`4sight migrate up
-
-Apply pending migrations, starting with 4sight_migration, then every
-database named by .4sight/schemas.
 
 This command takes no arguments.
 

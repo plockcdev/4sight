@@ -64,7 +64,7 @@ func (s *doltStore) insertApplied(table, id string, at time.Time) error {
 		return fmt.Errorf("invalid migration id %q", id)
 	}
 	query := fmt.Sprintf(
-		"INSERT INTO %s.%s (id, time) VALUES ('%s', '%s')",
+		"INSERT INTO %s.`%s` (id, time) VALUES ('%s', '%s')",
 		migrationsDB, table, id, at.Format("2006-01-02 15:04:05"),
 	)
 	return s.run("sql", "-q", query)

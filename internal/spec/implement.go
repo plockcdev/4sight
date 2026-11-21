@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -32,17 +33,29 @@ Compare implemented and submitted spec bodies, including schema additions, chang
 
 Check code and schema specifications and implementation for logic, integrity, performance, mismatches, and ambiguous behavior. If a problem prevents safe implementation, stop and report the file, line number, and a search string, and recommend how to resolve it with 4sight spec or migration commands.
 
-For a full implementation, first run 4sight migrate implement prompt <path relative to schemas dir> for each database whose submitted schema requires a migration and follow it to create and submit the migration. Do not generate migrations for unchanged schemas. If a schema was deleted, or a new database or dependency cannot be handled without changing specs, stop and report the issue. Check migration chains and dependencies and stop if ordering is unsafe. Then update the code; do not apply new migrations before code changes. Use isolated migrated test databases if needed, and stop if a staged rollout is required. After verification, run {{.MigrateUpCommand}} and verify success before running {{.CompleteCommand}}. On failure report partial application and repair needed; do not mark complete. Stop if startup preflight or migration ordering makes this sequence impossible.
+{{.ProjectIdentity}}
+
+Maintain a durable task list when available, marking steps complete only after success.
+
+For a full implementation, compare implemented and submitted schema identities and prepare all necessary migrations before changing code. Follow the migration design for metadata, parent chains, and retirements; reuse matching migrations, and stop on ambiguous baselines or unsafe dependencies. Do not prepare migrations for unchanged schemas. Do not apply migrations to the working project during preparation or testing.
+
+Read the applicable schema and migration design specifications. Infer indexes and constraints. Entity tables have an implied id primary key unless specified otherwise; pure join tables use their referenced columns as a composite key. Resolve references against the referenced primary key, using _id for single-column references and one <reference>_<component>_id column per composite component. Stop if the component mapping is ambiguous.
+
+Inspect each live schema's submitted migration. Reuse a migration only when its recorded schema identity and normalized CRC32 match; a match does not prove SQL correctness or application. If metadata is absent and the baseline cannot otherwise be established, stop for reconciliation. SHA-256 is metadata, not a matching key. Do not create empty SQL solely for metadata. For a new database prepare an initial database-creation migration followed by a schema migration when SQL is required. Validate and reuse existing chain members on retry. For a deleted schema use its implemented identity and body; if its database was created, prepare a final retirement entry. Reject internal database deletion and conflicting lifecycles.
+
+Make the code changes, then test migration chains on isolated fresh databases and representative prior databases with histories and data. Verify ordering, preservation, behavior, and failure and retry handling. Once checks pass, apply migrations with {{.MigrateUpCommand}}; for 4sight itself invoke the new source with go run ./cmd/4sight. Verify histories and current links, then run {{.CompleteCommand}} only after all work succeeds. Stop and report repair or a staged rollout if the transition is unsafe.
+
+Verify application tracking-table creation, internal upgrade gating, and migration ordering. Do not run 4sight upgrade for the self-hosted application migration. If project identity requires a user answer, provide that answer to the migration command on standard input as its specification requires. Do not upgrade the working project during preparation or testing.
 
 For an explicitly code-only request, do not generate or apply migrations. Stop if code depends on a pending migration. After verification, mark complete only if all other required work is already complete; otherwise report the remaining work.
 
-For an explicitly schema-only request, run 4sight migrate implement prompt <path relative to schemas dir> and follow its schema-only instructions. Report the pending migration and how to apply it; do not apply it or mark the change complete.
+For an explicitly schema-only request, prepare the required migrations and report what remains pending; do not apply them or mark the change complete. For internal databases the new binary must embed and validate the complete chains.
 
 Remove command implementations whose cmd.md specs no longer exist. Update command routing, help, and usage accordingly.
 
 Update command help when command structure, arguments, options, or flags change. Show help for syntax errors and for --help at any command depth. If help is combined with other arguments, show help and return an error. Help lists commands, options, and arguments, not usage. Semantic errors should explain the problem without help.
 
-Maintain docs/USAGE.txt and docs/USAGE_<subcommand>.txt for every command recursively. Usage is brief practical guidance with examples. Explain design principles and conventions where users need them, in the relevant usage document. {{.UsageCommand}} or {{.UsageFlag}} prints the corresponding usage file; extra arguments are an error and show help.
+Maintain docs/USAGE.txt and docs/USAGE_<subcommand>.txt for every command recursively. Usage is brief practical guidance with examples. Explain design principles and conventions where users need them, in the relevant usage document. Provide {{.UsageCommand}} only as a top-level subcommand, and {{.UsageFlag}} on the main command and every subcommand. Each prints the corresponding usage file; extra arguments or flags are an error and show help. List the usage subcommand only in top-level help and the flag in help at every command level.
 
 Ensure each current internal database migration ID is embedded in the binary and its embedded chain includes all migrations through that ID.
 `
@@ -66,6 +79,7 @@ type implementPromptData struct {
 	UsageCommand      string
 	UsageFlag         string
 	CompleteCommand   string
+	ProjectIdentity   string
 }
 
 func ImplementPrompt(cwd string) error {
@@ -76,13 +90,44 @@ func ImplementPrompt(cwd string) error {
 	return runImplementPrompt(root, newDoltStore(filepath.Join(root, "db")), os.Stdout)
 }
 
+// CheckImplementationReady verifies the workspace before applying migrations.
+func CheckImplementationReady(cwd string) error {
+	root, err := findMetadataRoot(cwd)
+	if err != nil {
+		return err
+	}
+	st := newDoltStore(filepath.Join(root, "db"))
+	docs, err := st.listLatestBodies()
+	if err != nil {
+		return err
+	}
+	if err := verifyImplementSpecsInSync(root, docs); err != nil {
+		return err
+	}
+	workspace, submitted, err := st.changePointers()
+	if err != nil {
+		return err
+	}
+	implemented, err := st.implementedChangeID()
+	if err != nil {
+		return err
+	}
+	if workspace != submitted {
+		return fmt.Errorf("workspace %s differs from submitted change %s", workspace, submitted)
+	}
+	if submitted == implemented {
+		return fmt.Errorf("no submitted change awaits implementation")
+	}
+	return nil
+}
+
 func runImplementPrompt(metadataRoot string, st store, stdout io.Writer) error {
 	docs, err := st.listLatestBodies()
 	if err != nil {
 		return fmt.Errorf("list spec bodies: %w", err)
 	}
 	data := implementPromptData{
-		MigrateUpCommand: "`4sight migrate up`",
+		MigrateUpCommand: "`4sight spec change implement agent migrate up`",
 		UsageCommand:     "`usage`",
 		UsageFlag:        "`--usage`",
 		CompleteCommand:  "`4sight spec change implement agent done`",
@@ -165,6 +210,7 @@ func runImplementPrompt(metadataRoot string, st store, stdout io.Writer) error {
 	}
 
 	projectRoot := filepath.Dir(metadataRoot)
+	data.ProjectIdentity = implementationProjectIdentity(projectRoot)
 	lastType := ""
 	for _, schema := range schemas {
 		base := filepath.Base(schema)
@@ -188,6 +234,30 @@ func runImplementPrompt(metadataRoot string, st store, stdout io.Writer) error {
 	}
 	_, err = io.WriteString(stdout, output.String())
 	return err
+}
+
+func implementationProjectIdentity(root string) string {
+	cmd := exec.Command("git", "remote", "get-url", "origin")
+	cmd.Dir = root
+	output, err := cmd.Output()
+	remote := strings.TrimRight(strings.TrimSpace(string(output)), "/")
+	if pos := strings.LastIndexAny(remote, "/:"); pos >= 0 {
+		remote = remote[pos+1:]
+	}
+	remote = strings.TrimSuffix(remote, ".git")
+	local := filepath.Base(root)
+	if err != nil || remote == "" || local == "." || local == string(filepath.Separator) {
+		return "Project identity is ambiguous. Stop and ask the user whether this is 4sight itself or an ordinary application; retain the answer for the migration step."
+	}
+	selfLocal := strings.EqualFold(local, "4sight")
+	selfRemote := strings.EqualFold(remote, "4sight")
+	if selfLocal != selfRemote {
+		return "Project identity is ambiguous. Stop and ask the user whether this is 4sight itself or an ordinary application; retain the answer for the migration step."
+	}
+	if selfLocal {
+		return "This project is 4sight developing itself."
+	}
+	return "This project is an ordinary application."
 }
 
 func verifyImplementSpecsInSync(root string, bodies []specDoc) error {

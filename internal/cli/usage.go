@@ -11,8 +11,9 @@ import (
 var usageDocs embed.FS
 
 var helpTopics = map[string]bool{
-	"": true, "init": true, "migrate": true, "migrate up": true,
-	"migrate implement": true, "migrate implement prompt": true,
+	"upgrade": true, "garbage_collect": true, "spec change implement agent migrate": true, "spec change implement agent migrate up": true,
+	"": true, "init": true,
+
 	"spec": true, "spec history": true, "spec export": true, "spec sync-check": true,
 	"spec sync-diff": true, "spec implement": true, "spec implement prompt": true,
 	"spec change": true, "spec change import": true, "spec change list": true,
@@ -27,8 +28,9 @@ var helpTopics = map[string]bool{
 }
 
 var usageCommands = map[string]bool{
-	"": true, "init": true, "migrate": true, "migrate up": true,
-	"migrate implement": true, "migrate implement prompt": true,
+	"upgrade": true, "garbage_collect": true, "spec change implement agent migrate": true, "spec change implement agent migrate up": true,
+	"": true, "init": true,
+
 	"spec": true, "spec history": true, "spec export": true, "spec sync-check": true,
 	"spec sync-diff": true, "spec implement": true, "spec implement prompt": true,
 	"spec change": true, "spec change import": true, "spec change list": true,
@@ -43,7 +45,8 @@ var usageCommands = map[string]bool{
 }
 
 var plainUsageCommands = map[string]bool{
-	"": true, "init": true, "migrate": true, "migrate up": true, "migrate implement": true,
+	"upgrade": true, "garbage_collect": true, "spec change implement agent migrate": true, "spec change implement agent migrate up": true,
+	"": true, "init": true,
 	"spec": true, "spec history": true, "spec status": true, "spec sync-check": true, "spec sync-diff": true,
 	"spec implement": true, "spec implement prompt": true, "spec change": true,
 	"spec change import": true, "spec change list": true,
@@ -85,7 +88,7 @@ func runUsage(args []string) (int, bool) {
 			continue
 		}
 		prefix := strings.Join(args[:i], " ")
-		if arg == "usage" && !plainUsageCommands[prefix] {
+		if arg == "usage" && i != 0 {
 			continue
 		}
 		if !usageCommands[prefix] {

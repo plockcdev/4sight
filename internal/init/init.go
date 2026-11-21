@@ -25,6 +25,9 @@ func run(cwd string, source fs.FS, stdout interface{ Write([]byte) (int, error) 
 	if err != nil {
 		return fmt.Errorf("resolve current directory: %w", err)
 	}
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		abs = resolved
+	}
 	git := exec.Command("git", "rev-parse", "--show-toplevel")
 	git.Dir = cwd
 	out, err := git.Output()
@@ -35,13 +38,12 @@ func run(cwd string, source fs.FS, stdout interface{ Write([]byte) (int, error) 
 	if err != nil {
 		return fmt.Errorf("resolve git root: %w", err)
 	}
+	if resolved, err := filepath.EvalSymlinks(root); err == nil {
+		root = resolved
+	}
 	if root != abs {
 		return fmt.Errorf("run 4sight init from the git repository root %s (current directory is %s)", root, abs)
 	}
-	if err := verifyCleanGitWorkspace(root); err != nil {
-		return err
-	}
-
 	metadata := filepath.Join(root, ".4sight")
 	database := filepath.Join(metadata, "db")
 	entries, err := os.ReadDir(database)
@@ -51,8 +53,9 @@ func run(cwd string, source fs.FS, stdout interface{ Write([]byte) (int, error) 
 	newDatabase := len(entries) == 0
 	if !newDatabase {
 		if err := preflightDatabase(database); err != nil {
-			return fmt.Errorf("existing database location %s: %w; initialization requires an empty database location", database, err)
+			return fmt.Errorf("existing database location %s is partial, damaged, or requires attention: %w; restore or reconcile the existing installation before retrying", database, err)
 		}
+		return fmt.Errorf("4sight is already initialized at %s; run 4sight upgrade", database)
 	}
 	if err := os.MkdirAll(metadata, 0o755); err != nil {
 		return fmt.Errorf("create %s: %w", metadata, err)
@@ -73,11 +76,34 @@ func run(cwd string, source fs.FS, stdout interface{ Write([]byte) (int, error) 
 		return fmt.Errorf("check Dolt repository %s: %w", database, err)
 	}
 	if newDatabase {
+		if _, err := fmt.Fprintln(stdout, "Bootstrapping cannot recover prior spec history, reviews, migration histories, or retirement records. Restore or reconcile existing application database histories before migrating them."); err != nil {
+			return err
+		}
 		if err := bootstrapDatabases(database, embedded, time.Now); err != nil {
 			return err
 		}
 	}
 
+	if err := setupManagedFiles(root, metadata, source); err != nil {
+		return err
+	}
+	workspaceRows, err := (doltBootstrap{dataDir: database}).queryCSV("SELECT workspace_change_id FROM spec.current_changes WHERE singleton = 1")
+	if err != nil {
+		return fmt.Errorf("read workspace spec change after bootstrap: %w", err)
+	}
+	if newDatabase || (len(workspaceRows) == 1 && len(workspaceRows[0]) > 0 && workspaceRows[0][0] == "ch-000") {
+		if err := spec.ChangeImport(root); err != nil {
+			return fmt.Errorf("import initialized specs: %w", err)
+		}
+	}
+	_, err = fmt.Fprintf(stdout, "initialized 4sight in %s\n", root)
+	return err
+}
+
+func setupManagedFiles(root, metadata string, source fs.FS) error {
+	if err := ensureGitignoreEntry(root, ".4sight/changes"); err != nil {
+		return err
+	}
 	rootAsset, err := fs.ReadFile(source, "assets/root_AGENTS.md")
 	if err != nil {
 		return fmt.Errorf("read embedded root instructions: %w", err)
@@ -119,36 +145,6 @@ func run(cwd string, source fs.FS, stdout interface{ Write([]byte) (int, error) 
 			return fmt.Errorf("write %s: %w", item.target, err)
 		}
 	}
-	workspaceRows, err := (doltBootstrap{dataDir: database}).queryCSV("SELECT workspace_change_id FROM spec.current_changes WHERE singleton = 1")
-	if err != nil {
-		return fmt.Errorf("read workspace spec change after bootstrap: %w", err)
-	}
-	if newDatabase || (len(workspaceRows) == 1 && len(workspaceRows[0]) > 0 && workspaceRows[0][0] == "ch-000") {
-		if err := spec.ChangeImport(root); err != nil {
-			return fmt.Errorf("import initialized specs: %w", err)
-		}
-	}
-	if err := commitInitializedFiles(root); err != nil {
-		return err
-	}
-	_, err = fmt.Fprintf(stdout, "initialized 4sight in %s\n", root)
-	return err
-}
-
-func verifyCleanGitWorkspace(root string) error {
-	cmd := exec.Command("git", "status", "--porcelain", "--untracked-files=all")
-	cmd.Dir = root
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		message := strings.TrimSpace(string(output))
-		if message == "" {
-			message = err.Error()
-		}
-		return fmt.Errorf("check git working tree in %s: %s", root, message)
-	}
-	if strings.TrimSpace(string(output)) != "" {
-		return fmt.Errorf("git working tree in %s is not clean; commit or stash staged, unstaged, and untracked changes before running 4sight init", root)
-	}
 	return nil
 }
 
@@ -170,43 +166,6 @@ func ensureGitignoreEntry(root, pattern string) error {
 	body = append(body, pattern+"\n"...)
 	if err := os.WriteFile(path, body, 0o644); err != nil {
 		return fmt.Errorf("update %s: %w", path, err)
-	}
-	return nil
-}
-
-func commitInitializedFiles(root string) error {
-	add := exec.Command("git", "add", "--", ".4sight", "AGENTS.md", ".gitignore")
-	add.Dir = root
-	if output, err := add.CombinedOutput(); err != nil {
-		message := strings.TrimSpace(string(output))
-		if message == "" {
-			message = err.Error()
-		}
-		return fmt.Errorf("stage initialized files in %s: %s; resolve the Git error and stage .4sight, AGENTS.md, and .gitignore manually", root, message)
-	}
-
-	diff := exec.Command("git", "diff", "--cached", "--quiet")
-	diff.Dir = root
-	if output, err := diff.CombinedOutput(); err != nil {
-		if exit, ok := err.(*exec.ExitError); !ok || exit.ExitCode() != 1 {
-			message := strings.TrimSpace(string(output))
-			if message == "" {
-				message = err.Error()
-			}
-			return fmt.Errorf("check staged init changes in %s: %s", root, message)
-		}
-	} else {
-		return nil
-	}
-
-	commit := exec.Command("git", "commit", "-m", "Initialize 4sight")
-	commit.Dir = root
-	if output, err := commit.CombinedOutput(); err != nil {
-		message := strings.TrimSpace(string(output))
-		if message == "" {
-			message = err.Error()
-		}
-		return fmt.Errorf("commit initialized files in %s: %s; resolve the Git error and commit the staged initialization files manually", root, message)
 	}
 	return nil
 }
@@ -465,10 +424,7 @@ func rewriteRootInstructions(path, current string, historical [][]byte) error {
 
 func sameManagedLine(actual, expected string) bool {
 	actual = strings.TrimSpace(actual)
-	if actual == expected {
-		return true
-	}
-	return strings.HasPrefix(actual, strings.TrimRight(expected, ".")+",")
+	return actual == expected
 }
 
 func normalizedLines(s string) []string {

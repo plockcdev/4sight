@@ -1,0 +1,1 @@
+Run `4sight upgrade` to update an existing project's internal databases and managed setup to the installed binary's version.
