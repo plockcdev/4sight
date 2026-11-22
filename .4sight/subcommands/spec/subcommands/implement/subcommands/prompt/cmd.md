@@ -26,6 +26,13 @@ stop after telling user nothing to do.
 
 ## Read Specs
 
+Embed the 4sight migration design from `.4sight/subcommands/migrate/design.md`
+in the binary at build time and include its contents in the implementation
+prompt as 4sight's migration guidance. This guidance applies to ordinary
+application projects as well as 4sight itself; it is not an application spec.
+Keep the embedded copy synchronized with the source design when implementing
+changes to it. Do not require the target project to contain this file.
+
 Tell agent to read:
 
 - all the design spec for top level and all subcommands

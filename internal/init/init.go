@@ -3,6 +3,7 @@ package init
 import (
 	"embed"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -70,7 +71,14 @@ func run(cwd string, source fs.FS, stdout interface{ Write([]byte) (int, error) 
 		cmd := exec.Command("dolt", "init")
 		cmd.Dir = database
 		if output, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("initialize Dolt in %s: %s; install Dolt and rerun 4sight init", database, strings.TrimSpace(string(output)))
+			if errors.Is(err, exec.ErrNotFound) {
+				return fmt.Errorf("initialize Dolt in %s: install Dolt and rerun 4sight init: %w", database, err)
+			}
+			message := strings.TrimSpace(string(output))
+			if strings.Contains(message, "empty ident name") || strings.Contains(message, "Author identity unknown") {
+				return fmt.Errorf("initialize Dolt in %s: %s; configure Dolt user.name and user.email, then retry if the database location is empty", database, message)
+			}
+			return fmt.Errorf("initialize Dolt in %s: %s (%w); resolve the error and inspect the database location before retrying", database, message, err)
 		}
 	} else if err != nil {
 		return fmt.Errorf("check Dolt repository %s: %w", database, err)

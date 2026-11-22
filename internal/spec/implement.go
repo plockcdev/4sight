@@ -2,6 +2,7 @@ package spec
 
 import (
 	"bytes"
+	_ "embed"
 	"fmt"
 	"io"
 	"os"
@@ -11,6 +12,9 @@ import (
 	"strings"
 	"text/template"
 )
+
+//go:embed assets/migration-design.md
+var migrationGuidance string
 
 const implementPromptTemplate = `Read these design and command specification documents from the spec database to understand the application behavior. These code specification files inform application behavior; read all listed files and applicable inherited design and coding standards:
 {{range .CodeSpecs}}
@@ -29,6 +33,11 @@ Group the schemas by database type:
 {{end}}{{end}}
 {{if .CompositeDiffPath}}Read the composite diff at {{.CompositeDiffPath}} to inspect path changes, deletions, text asset changes, and rename/copy relationship metadata. Text assets are omitted from the spec list; read relevant text asset files from disk.
 {{end}}
+The following is 4sight's migration guidance, not an application spec. Read it when preparing migrations:
+
+----- 4SIGHT MIGRATION GUIDANCE -----
+{{.MigrationGuidance}}----- END 4SIGHT MIGRATION GUIDANCE -----
+
 Compare implemented and submitted spec bodies, including schema additions, changes, and deletions, and inspect migration state. Do not edit or import specs. Account for startup preflight: do not run newly built binaries against the working project if they would apply migrations outside the requested scope or before the permitted step. Use isolated test projects as needed; stop if this cannot be done safely.
 
 Check code and schema specifications and implementation for logic, integrity, performance, mismatches, and ambiguous behavior. If a problem prevents safe implementation, stop and report the file, line number, and a search string, and recommend how to resolve it with 4sight spec or migration commands.
@@ -80,6 +89,7 @@ type implementPromptData struct {
 	UsageFlag         string
 	CompleteCommand   string
 	ProjectIdentity   string
+	MigrationGuidance string
 }
 
 func ImplementPrompt(cwd string) error {
@@ -127,10 +137,11 @@ func runImplementPrompt(metadataRoot string, st store, stdout io.Writer) error {
 		return fmt.Errorf("list spec bodies: %w", err)
 	}
 	data := implementPromptData{
-		MigrateUpCommand: "`4sight spec change implement agent migrate up`",
-		UsageCommand:     "`usage`",
-		UsageFlag:        "`--usage`",
-		CompleteCommand:  "`4sight spec change implement agent done`",
+		MigrationGuidance: migrationGuidance,
+		MigrateUpCommand:  "`4sight spec change implement agent migrate up`",
+		UsageCommand:      "`usage`",
+		UsageFlag:         "`--usage`",
+		CompleteCommand:   "`4sight spec change implement agent done`",
 	}
 	if state, ok := st.(interface {
 		changePointers() (string, string, error)

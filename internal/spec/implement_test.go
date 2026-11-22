@@ -2,6 +2,7 @@ package spec
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -99,5 +100,25 @@ func TestImplementPromptOmitsDiskOnlySpecs(t *testing.T) {
 	}
 	if strings.Contains(out.String(), "only on disk") || strings.Contains(out.String(), "migrate/design.md") {
 		t.Fatalf("listed disk-only spec: %q", out.String())
+	}
+}
+
+func TestMigrationGuidanceMatchesSource(t *testing.T) {
+	source, err := os.ReadFile("../../.4sight/subcommands/migrate/design.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(source) != migrationGuidance {
+		t.Fatal("embedded migration guidance differs from source design")
+	}
+	root := newMetadata(t)
+	var out bytes.Buffer
+	if err := runImplementPrompt(root, &fakeStore{}, &out); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"4SIGHT MIGRATION GUIDANCE", "-- 4sight-schema-crc32:", "<id>-<parent_id>.sql", "Normalize line endings to LF"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("missing migration guidance %q", want)
+		}
 	}
 }

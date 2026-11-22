@@ -64,6 +64,10 @@ When a user runs `4sight init`, initialize 4sight's internal spec database in
 the target repo's `.4sight/db`:
 
 - Initialize Dolt if `.4sight/db` is not already initialized.
+  If the Dolt executable is unavailable, tell the user to install it. For other
+  initialization failures, report Dolt's error and applicable recovery guidance;
+  do not claim Dolt is missing. For example, a missing Dolt author identity
+  requires configuring that identity before retrying.
 - Apply the embedded `4sight_migration` migration SQL directly from
 the binary, in migration order. Track applied migration IDs in the target's
 `4sight_migration` database.
