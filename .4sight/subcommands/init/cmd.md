@@ -110,7 +110,15 @@ overwrite as AGENTS.md in the .4sight directory
 
 ### coding.md
 
-if .4sight/coding.md does not exist, create it, otherwise leave alone
+If `.4sight/coding.md` does not exist, create it from this asset; otherwise
+leave it alone. It is user-owned.
+
+### coding_suggestions.md
+
+Overwrite `.4sight/coding_suggestions.md` with this 4sight-owned asset. Its
+standards apply through `coding.md`, subject to overrides there. Preserve
+existing `coding.md` files, including those created by older versions; do not
+insert a reference into them.
 
 ## Import Specs
 

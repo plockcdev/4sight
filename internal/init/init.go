@@ -137,6 +137,7 @@ func setupManagedFiles(root, metadata string, source fs.FS) error {
 	}{
 		{"4sight_AGENTS.md", filepath.Join(metadata, "AGENTS.md"), false},
 		{"coding.md", filepath.Join(metadata, "coding.md"), true},
+		{"coding_suggestions.md", filepath.Join(metadata, "coding_suggestions.md"), false},
 	} {
 		if item.preserve {
 			if _, err := os.Stat(item.target); err == nil {

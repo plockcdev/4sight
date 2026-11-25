@@ -42,8 +42,8 @@ none is required or created.
 
 After successful migration, apply the repeatable setup rules of `init`: ensure
 `.4sight/changes` is in `.gitignore`, maintain the managed root AGENTS section,
-overwrite `.4sight/AGENTS.md` with the current managed asset, and create
-`.4sight/coding.md` only if absent. Preserve unrelated content. Do not reimport
+overwrite `.4sight/AGENTS.md` and `.4sight/coding_suggestions.md` with their
+current managed assets, and create `.4sight/coding.md` only if absent. Preserve unrelated content. Do not reimport
 specs or reset workspace, submitted, implemented, or review history. Do not stage
 or commit files. If maintenance fails, report what succeeded and what needs repair;
 a retry must be safe. Report whether migrations and managed files changed.

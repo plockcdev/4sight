@@ -20,3 +20,9 @@ After code changes are ready, run package targeted:
 - golangci-lint
 
 main package lives under git root `./cmd/<appname>/`
+
+## Dolt database access
+
+When repeated data access can be batched, prefer batching where practical to
+reduce database calls. Preserve the required results, ordering, and transaction
+semantics.

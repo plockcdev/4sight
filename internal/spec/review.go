@@ -365,7 +365,7 @@ func runChangeReviewPrompt(root string, st *doltStore, out io.Writer) error {
 		fmt.Fprintf(&b, "- %s\n", relFromProject(projectRoot, schema))
 	}
 	diffProjectPath := filepath.ToSlash(filepath.Join(".4sight", "changes", state.Workspace, "unified.diff"))
-	fmt.Fprintf(&b, "\nComposite diff: %s\n\nRead the composite diff to review all changes since the last submitted specification. Read the full workspace spec for every file referenced in the diff, read all database schema specs listed above, and read workspace specs related to changed files or the change prompt, including parent command design docs and coding standards as applicable.\n", diffProjectPath)
+	fmt.Fprintf(&b, "\nComposite diff: %s\n\nRead the composite diff to review all changes since the last submitted specification. Read the full workspace spec for every file referenced in the diff, read all database schema specs listed above, and read workspace specs related to changed files or the change prompt, including parent command design docs and coding standards as applicable. Follow applicable coding standards, including referenced standards and command-path overrides, and assess changed specifications against them, unless directly instructed otherwise by the user.\n", diffProjectPath)
 	responseSchemaRel := filepath.Join("subcommands", "spec", "subcommands", "change", "subcommands", "review", "subcommands", "agent", "responseSchema.json")
 	responseSchemaPath := filepath.Join(root, responseSchemaRel)
 	if _, err := os.Stat(responseSchemaPath); err == nil {

@@ -190,7 +190,7 @@ func applyInternal(cwd string, agent bool) error {
 		fmt.Printf("internal migrations changed: %t\n", changed)
 		return nil
 	}
-	managedPaths := []string{filepath.Join(root, ".gitignore"), filepath.Join(root, "AGENTS.md"), filepath.Join(root, ".4sight", "AGENTS.md"), filepath.Join(root, ".4sight", "coding.md")}
+	managedPaths := []string{filepath.Join(root, ".gitignore"), filepath.Join(root, "AGENTS.md"), filepath.Join(root, ".4sight", "AGENTS.md"), filepath.Join(root, ".4sight", "coding.md"), filepath.Join(root, ".4sight", "coding_suggestions.md")}
 	before := make([][]byte, len(managedPaths))
 	for i, path := range managedPaths {
 		before[i], _ = os.ReadFile(path)

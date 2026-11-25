@@ -113,7 +113,10 @@ changes since the last submitted specification (user does not know what a
 pointer is), to read the full workspace spec of any file referenced in the diff,
 to read all the db spec files, and to read any workspace spec files related to
 either changed files or the change prompt such as command parent design specs or
-parent coding standards.
+parent coding standards. Instruct the reviewer to follow applicable coding
+standards, including referenced standards and command-path overrides, and assess
+changed specifications against them, unless directly instructed otherwise by
+the user.
 
 Provide the path to the composite diff file.
 

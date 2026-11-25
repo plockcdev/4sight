@@ -25,7 +25,9 @@ Output the workspace change ID, submitted change ID, the composite diff path,
 all live workspace code spec paths, and all live workspace schema spec paths.
 Do not list assets as specs. Instruct the agent to read the composite diff, the
 full relevant workspace specs, all relevant database schema specs, and related
-design and coding standards.
+design and coding standards. Instruct the agent to follow applicable coding
+standards, including referenced standards and command-path overrides, unless
+directly instructed otherwise by the user.
 
 Include the saved user request. Instruct the agent to consider both code and schema specifications for every
 request and edit all relevant specs on disk, including both kinds when the

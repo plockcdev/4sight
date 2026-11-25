@@ -205,3 +205,37 @@ func TestInitPreservesDirtyWorkspaceAndRejectsExisting(t *testing.T) {
 		t.Fatalf("second init: %v", err)
 	}
 }
+
+func TestManagedCodingAssetsPreserveOverrides(t *testing.T) {
+	root := t.TempDir()
+	metadata := filepath.Join(root, ".4sight")
+	if err := os.MkdirAll(metadata, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := setupManagedFiles(root, metadata, embedded); err != nil {
+		t.Fatal(err)
+	}
+	coding := filepath.Join(metadata, "coding.md")
+	suggestions := filepath.Join(metadata, "coding_suggestions.md")
+	if err := os.WriteFile(coding, []byte("project override\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(suggestions, []byte("stale suggestions\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := setupManagedFiles(root, metadata, embedded); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(coding)
+	if err != nil || string(got) != "project override\n" {
+		t.Fatalf("coding: %q %v", got, err)
+	}
+	got, err = os.ReadFile(suggestions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := embedded.ReadFile("assets/coding_suggestions.md")
+	if err != nil || string(got) != string(want) {
+		t.Fatalf("suggestions not refreshed: %v", err)
+	}
+}
