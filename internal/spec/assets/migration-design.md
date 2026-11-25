@@ -13,6 +13,37 @@ matures and feature are added or taken away.  These changes are driven by
 schema spec changes.  To update the db from empty to each successive version
 of the schema, we call these "migrations".
 
+## Schema changes without SQL
+
+A live schema body can change without changing the required database structure.
+The implemented spec pointer associates each live schema identity and body at
+that pointer with the verified applied migration chain for its database. Resolve
+identity and body through spec history and the applied chain through its
+tracking records; migration headers identify the schema body a SQL entry was
+prepared for, not necessarily the latest equivalent body. Advancing the
+implemented pointer after verification records the new association. It does not
+rewrite migration files or add an association file or migration entry. This
+records the current implemented association, not a separate audit record of each
+intermediate equivalence decision. Keep spec history and migration history.
+
+The association is valid only when the applied chain and its schema are known
+to satisfy the implemented body. For a pending change, compare that body directly with the final submitted
+body and account for the actual database and any prepared chain entries.
+Intermediate spec revisions do not require intermediate migrations. A checksum difference alone neither requires SQL nor proves that no
+SQL is needed. Verify that the resulting database satisfies every submitted DDL
+requirement, including inferred keys, indexes and enforceable constraints, and
+that any remaining non-SQL requirements are handled by the application. A
+location change does not by itself change DDL, but moving or initializing a
+database can require separate application work. If the baseline, pending SQL,
+actual state, or equivalence cannot be established, stop for reconciliation;
+do not advance the implemented pointer on an assumption.
+
+On retry, derive the same association from the implemented pointer and recorded
+chain. A prepared but unapplied migration is not an applied association. Verify
+its identity, contents and chain state before reusing it. A stale current link is reconciled
+against trustworthy tracking history under the migration rules. Never alter an
+applied migration to update its schema metadata.
+
 ## file layout
 
 ### migrations

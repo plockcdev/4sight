@@ -14,16 +14,30 @@ attempt number. Do not alter prior attempts.
 Review the specifications for clarity, completeness, and consistency. They
 describe intended behavior, which may not yet be implemented; do not treat
 missing or incomplete code implementation as a specification defect.
+Check that schema specs contain persisted data definitions and constraints,
+while application design and command specs specify operational choices such as
+database location, initialization, and access. Flag misplaced requirements and
+missing cross-spec behavior, including a location change that requires application
+work even when it requires no SQL. For changed schemas, assess whether migration
+requirements and any no-SQL conclusion are clear enough to implement safely;
+do not infer equivalence merely from descriptive wording or checksums.
 Check that newly introduced managed databases can use the standard application
 migration tracking requirements in the schema spec.
 Tell the reviewer Dolt is the default when no different database is established,
 using file-backed access without a daemon, and other backends have not been
 tested. Users should commit Dolt database files alongside application changes;
 a Git-based rollback mechanism is deferred. Respect project-specific requirements. Treat
-4sight's working database bootstrap and migration workflow as established;
-do not require an application-owned runtime migration mechanism merely because
-the schema uses Dolt. Identify missing application access, deployment lifecycle,
-or existing-data import decisions when they matter to the specified behavior.
+4sight's working database bootstrap and migration workflow as established.
+For database-backed applications, assess the application initialization and
+upgrade lifecycle against the authoring reference's default, respecting an
+established alternative or an explicit exclusion of migration support. Do not
+assume 4sight's working-database migrations upgrade deployed instances. Identify
+missing application access, deployment lifecycle, or existing-data import
+decisions when they matter to the specified behavior.
+
+Embed the author command's `assets/application-database-lifecycle.md` at build
+time and include it in the review prompt. Keep the embedded copy synchronized
+with the source asset; do not require it in the target project.
 
 The meta info is id of the current workspace change, the current submitted
 change, and the change prompt (if not empty). Explicitly identify the workspace

@@ -43,7 +43,12 @@ changes in the composite diff and read relevant text asset files from disk.
 
 ## Check Spec Problems
 
-The code and schema specifications work together.
+The code and schema specifications work together. Tell the agent that schema
+specs define persisted data structure, meaning, relationships, and constraints;
+application design and command specs define operational behavior such as
+database location, initialization, and access. If a requirement is misplaced,
+report it as a spec issue rather than silently moving or editing it during
+implementation.
 
 If code spec has logic problems, schema has issues such as integrity or
 performance, code mismatches schema, or you cannot reasonably infer proper
@@ -117,24 +122,36 @@ Resolve each reference against the referenced table's primary key.
 Keep `_id` as an SQL implementation convention; schema specs describe
 references semantically.
 
-For each live schema that needs SQL, inspect its existing submitted migration.
-Resolve the schema identity from its recorded path and change ID. If the identity
-and normalized CRC32 match the submitted schema, reuse that migration; this does
-not establish that its SQL is correct or that it has been applied. Do not use
-SHA-256 for matching. If a pre-existing migration lacks valid metadata and its
-baseline cannot otherwise be established, stop and request reconciliation. A
-different checksum alone does not require SQL; if no SQL is needed, do not create
-an empty migration solely for metadata.
+For each existing live schema, compare the implemented body directly with the
+final submitted body and establish the verified applied chain and actual
+database state. Prepare at most one SQL successor for the net changes required
+for that database; do not create migrations for intermediate spec revisions.
+Account for data transformations as well as DDL. Check that the resulting schema
+and application satisfy the submitted requirements. Explain the evidence when
+no SQL is needed. If the baseline or result cannot be verified, stop and request
+reconciliation.
 
-For a new database with no migration chain, create the initial migration that
-creates the empty database, then create a successor with the SQL needed to reach
-the submitted schema. The successor contains the schema metadata required by the
-migration design; point submitted at the successor. If the initial migration
-already exists on retry, validate it and the chain, reuse it, and prepare the
-missing successor. If an existing successor matches the schema, reuse it. Stop on
-ambiguous or conflicting state rather than create duplicate migrations. If the
-submitted schema requires no SQL after creating the database, explain that and
-leave submitted at the initial migration.
+Inspect any prepared successor and its application history before reusing it.
+Reuse it if it correctly implements the net delta; matching schema identity and
+normalized CRC32 identify its intended body but do not prove SQL correctness or
+application. Do not use SHA-256 for matching. Update or remove a known unapplied
+prepared migration if the net delta requires it, preserving applied entries and
+avoiding conflicting chain children. If no SQL is needed, point submitted at the
+verified applied entry. Never modify an applied migration. If application is
+uncertain, follow the migration recovery rules. Keep passing test results only
+when the tested migration and relevant code and requirements remain unchanged;
+rerun affected checks after changes.
+
+For a new database, there is no implemented body or working database to inspect.
+Create the initial migration that creates the empty database, then, if SQL is
+needed, one successor to reach the final submitted schema. The successor contains
+the schema metadata required by the migration design; point submitted at the
+successor. If no SQL is needed after creating the database, explain that and
+leave submitted at the initial migration. On retry, validate and reuse correct
+prepared entries and update or remove known unapplied entries as above. Verify
+the resulting schema in an isolated database before applying to the working
+project. Stop on ambiguous or conflicting state rather than create duplicate
+migrations.
 
 For a deleted submitted schema, use its former path and last implemented body
 from spec history. If the database was created, prepare a final retirement entry
@@ -159,7 +176,10 @@ Instruct the agent to carry out these steps in order:
    code-only change with no migration, run relevant code checks instead.
 3. Once checks pass, run `4sight spec change implement agent migrate up` to apply
    the prepared application migrations to the working project. Verify histories
-   and current links. For 4sight developing itself, run the new source with
+   and current links. If the application specs require an application-owned
+   migration history, reconcile it with the verified 4sight history and actual
+   database state as specified before using the working database or completing
+   implementation. Stop for repair if reconciliation is unsafe. For 4sight developing itself, run the new source with
    `go run ./cmd/4sight spec change implement agent migrate up` from the project
    root, then use `go run ./cmd/4sight` for verification and completion. Do not
    run `4sight upgrade` for these application migrations. If project identification
@@ -167,8 +187,9 @@ Instruct the agent to carry out these steps in order:
    as described in its spec. If the transition cannot be performed safely, stop
    and explain the staged rollout needed.
 4. Run `4sight spec change implement agent done` only after all required work and
-   verification succeeds. On failure, stop, report partial results and repair
-   needed, and do not mark the change implemented.
+   verification succeeds, including no-SQL schema equivalence and any application
+   work required by the submitted specs. On failure, stop, report partial results
+   and repair needed, and do not mark the change implemented.
 
 If testing, deployment, or migration cannot safely follow this order, stop and
 explain the required staged rollout. Verify application tracking-table creation,
@@ -244,4 +265,3 @@ At the end of implementation, instruct the agent to ensure that each current
 4sight internal database migration ID is built into the binary as an embedded
 string available to the shared startup check, and that the embedded migration
 chains include all migrations through those IDs.
-

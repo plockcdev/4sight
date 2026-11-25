@@ -40,8 +40,11 @@ data: its structure and DDL requirements, meaning and intended use, relationship
 and constraints. Include constraints even when the database cannot enforce them;
 the application must enforce any such constraints that apply to its operations.
 Schema specs describe the logical model and requirements; SQL DDL is produced in
-migration files. See `.4sight/subcommands/migrate/design.md` for how schema
-specifications relate to database migrations.
+migration files. Operational choices such as database location, initialization,
+and access belong in application design or command specs, unless they are
+requirements of the persisted data model itself. See
+`.4sight/subcommands/migrate/design.md` for how schema specifications relate to
+database migrations.
 
 Code implementation specifications describe the program and its commands. They
 may rely on the schema specifications without restating their data definitions,

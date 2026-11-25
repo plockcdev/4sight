@@ -63,7 +63,7 @@ func TestImplementPromptUsesDatabaseBodies(t *testing.T) {
 	if strings.Contains(got, "notes.txt") {
 		t.Fatalf("listed non-md schema: %q", got)
 	}
-	for _, want := range []string{"Compare implemented and submitted spec bodies", "For a full implementation", "For an explicitly code-only request", "For an explicitly schema-only request", "embedded chain"} {
+	for _, want := range []string{"Compare implemented and submitted spec bodies", "For a full implementation", "For an explicitly code-only request", "For an explicitly schema-only request", "embedded chain", "at most one SQL successor", "data transformations", "known unapplied prepared migrations", "no-SQL schema equivalence", "misplaced requirements"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("missing %q", want)
 		}

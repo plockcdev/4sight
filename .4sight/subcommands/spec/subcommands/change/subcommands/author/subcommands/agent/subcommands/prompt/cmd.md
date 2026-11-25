@@ -40,6 +40,21 @@ asset focused on routing, invocation, and applicable global rules.
 When introducing a managed application database, follow the standard application
 tracking table requirements in the schema spec.
 
+Embed the application database lifecycle reference from the author command's
+`assets/application-database-lifecycle.md` at build time and include it in the
+author prompt.
+Keep the embedded copy synchronized with the source asset. Do not require the
+target project to contain the asset.
+
+If the application uses a database, instruct the author to specify its
+initialization and upgrade lifecycle, including deployed instances and existing
+data. Use the reference as the default design unless the application has a
+different migration design or its spec explicitly excludes migration support.
+Capture application behavior in design or command specs and persisted tracking
+requirements in schema specs. Preserve established choices and ask the user
+when consequential decisions cannot be inferred. Distinguish the application's
+lifecycle from 4sight's working-database migrations.
+
 Instruct the agent that Dolt is the default when no different database is
 already established, using file-backed access without a daemon; other backends
 have not been tested. Users should commit Dolt database files alongside

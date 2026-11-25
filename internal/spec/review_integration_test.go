@@ -23,7 +23,7 @@ func TestReviewAttemptsPreserveHistoryDolt(t *testing.T) {
 	if err := runChangeReviewPrompt(root, store, &prompt); err != nil {
 		t.Fatalf("review prompt: %v", err)
 	}
-	for _, want := range []string{"one item at a time", "exact saved wording and source", "Do not infer approval from silence", "Do not edit specs or import changes", "Do not include rejected or deferred suggestions", "spec change author agent prompt"} {
+	for _, want := range []string{"one item at a time", "exact saved wording and source", "Do not infer approval from silence", "Do not edit specs or import changes", "Do not include rejected or deferred suggestions", "spec change author agent prompt", "Flag misplaced requirements", "location changes without SQL", "do not infer equivalence"} {
 		if !strings.Contains(prompt.String(), want) {
 			t.Errorf("review prompt missing %q", want)
 		}
