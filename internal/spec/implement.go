@@ -16,7 +16,9 @@ import (
 //go:embed assets/migration-design.md
 var migrationGuidance string
 
-const implementPromptTemplate = `Read these design and command specification documents from the spec database to understand the application behavior. These code specification files inform application behavior; read all listed files and applicable inherited design and coding standards:
+const implementPromptTemplate = `{{if .AlreadyImplemented}}There is no pending submitted change to implement. Continue only for a covered scoped direct request.
+
+{{end}}Read these design and command specification documents from the spec database to understand the application behavior. These code specification files inform application behavior; read all listed files and applicable inherited design and coding standards:
 {{range .CodeSpecs}}
 ----- SPEC {{.Path}} -----
 {{.Body}}{{if not (endsInNewline .Body)}}
@@ -37,6 +39,10 @@ The following is 4sight's migration guidance, not an application spec. Read it w
 
 ----- 4SIGHT MIGRATION GUIDANCE -----
 {{.MigrationGuidance}}----- END 4SIGHT MIGRATION GUIDANCE -----
+
+Follow applicable coding standards, including referenced standards and command-path overrides, unless directly instructed otherwise by the user.
+
+For a direct implementation request that does not explicitly request spec implementation, compare the request with the applicable submitted code and schema specs. Reject it if the submitted specs do not cover it and explain that relevant spec changes must be submitted first. Otherwise implement and verify only the requested scope, even if the submitted change is already implemented. Do not edit or import specs. Do not follow the full implementation task list below; the explicit code-only and schema-only restrictions still apply. Stop if the work depends on a pending schema migration or cannot be safely separated from other submitted work. Never mark a submitted change implemented unless all required work and verification are complete.
 
 Compare implemented and submitted spec bodies, including schema additions, changes, and deletions, and inspect migration state. Do not edit or import specs. Account for startup preflight: do not run newly built binaries against the working project if they would apply migrations outside the requested scope or before the permitted step. Use isolated test projects as needed; stop if this cannot be done safely.
 
@@ -84,16 +90,17 @@ type promptSchemaGroup struct {
 }
 
 type implementPromptData struct {
-	CodeSpecs         []promptCodeSpec
-	RemovedCodeSpecs  []string
-	SchemaGroups      []promptSchemaGroup
-	CompositeDiffPath string
-	MigrateUpCommand  string
-	UsageCommand      string
-	UsageFlag         string
-	CompleteCommand   string
-	ProjectIdentity   string
-	MigrationGuidance string
+	AlreadyImplemented bool
+	CodeSpecs          []promptCodeSpec
+	RemovedCodeSpecs   []string
+	SchemaGroups       []promptSchemaGroup
+	CompositeDiffPath  string
+	MigrateUpCommand   string
+	UsageCommand       string
+	UsageFlag          string
+	CompleteCommand    string
+	ProjectIdentity    string
+	MigrationGuidance  string
 }
 
 func ImplementPrompt(cwd string) error {
@@ -175,13 +182,10 @@ func runImplementPrompt(metadataRoot string, st store, stdout io.Writer) error {
 		if err != nil {
 			return fmt.Errorf("read implemented pointer: %w", err)
 		}
-		if implemented == submitted {
-			_, err := fmt.Fprintf(stdout, "nothing to implement: submitted change %s is already implemented\n", submitted)
-			return err
-		}
+		data.AlreadyImplemented = implemented == submitted
 		if diffStore, ok := st.(interface {
 			compositeDiff(from, to string) (string, error)
-		}); ok {
+		}); ok && !data.AlreadyImplemented {
 			diff, err := diffStore.compositeDiff(implemented, submitted)
 			if err != nil {
 				return fmt.Errorf("render submitted composite diff: %w", err)

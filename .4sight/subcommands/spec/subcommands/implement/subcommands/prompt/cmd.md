@@ -21,10 +21,15 @@ submit.
 
 ### Check implemented vs submitted
 
-If the implemented and submitted pointers are the same, then nothing to be done,
-stop after telling user nothing to do.
+If the implemented and submitted pointers are the same, report that there is no
+pending submitted change to implement. Still provide the scoped direct-request
+instructions below so an agent can use them when applicable; otherwise stop.
 
 ## Read Specs
+
+Instruct the agent to read and follow applicable coding standards, including
+referenced standards and command-path overrides, unless directly instructed
+otherwise by the user.
 
 Embed the 4sight migration design from `.4sight/subcommands/migrate/design.md`
 in the binary at build time and include its contents in the implementation
@@ -74,6 +79,23 @@ Determine the project identity using the inherited spec design. Tell the agent
 whether this is 4sight developing itself or an ordinary application. If the
 identity requires a user answer, instruct the agent to stop and ask the user,
 continue only after an explicit answer, and retain it for the migration step.
+
+### Scoped direct requests
+
+When the user requests implementation without explicitly requesting spec
+implementation, instruct the agent to compare the request with the applicable
+submitted code and schema specs. If they do not cover the request, reject the
+implementation request and explain that the relevant spec changes must be
+submitted first. Otherwise implement only the requested scope and verify it
+against those specs, even if submitted and implemented pointers match. Follow
+applicable coding standards and do not edit or import specs.
+
+Do not mark a submitted change implemented unless all of its required work and
+verification are complete. If the scoped work depends on a pending schema
+migration or cannot safely be separated from other submitted work, stop and
+report the dependency instead of applying partial migrations or expanding scope.
+For this scoped path, do not follow the full implementation task list below;
+the explicit code-only and schema-only restrictions still apply.
 
 ### Implementation task list
 

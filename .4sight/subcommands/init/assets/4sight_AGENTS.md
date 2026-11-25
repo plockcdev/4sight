@@ -12,28 +12,38 @@ Unless another database is already established, default to file-backed Dolt
 without a daemon. The spec authoring and implementation prompts establish the
 schema and bootstrap the working database. Do not assume this automatically
 migrates deployed databases or existing local data; discuss a one-off import
-tool when needed after database setup and before using the application.
-Users should commit the Dolt database files alongside application changes.
-Do not assume `git reset` safely restores database state; a Git-based database
-rollback mechanism is deferred.
+tool when needed after database setup and before using the application. Users
+should commit the Dolt database files alongside application changes. Do not
+assume `git reset` safely restores database state; a Git-based database rollback
+mechanism is deferred.
 
 Database schema specifications live in `.4sight/schemas`. Other specifications
 describe the program and its commands:
 
 - `.4sight/design.md` and `.4sight/coding.md` contain the overall design and
-  coding standards.
+coding standards.
 - `.4sight/main/` contains specifications for the command invoked without a
-  subcommand.
+subcommand.
 - `.4sight/subcommands/<name>/` contains specifications for a subcommand and may
-  itself contain a `subcommands/` directory for nested subcommands. A subcommand
-  exists only if its directory contains `cmd.md`.
+itself contain a `subcommands/` directory for nested subcommands. A subcommand
+exists only if its directory contains `cmd.md`.
 - A command's `cmd.md` specifies its arguments, environment variables, flags,
-  behavior, and output. Its optional `design.md` and `coding.md` describe
-  command-specific design and standards.
+behavior, and output. Its optional `design.md` and `coding.md` describe
+command-specific design and standards.
 
-Read the applicable parent design and coding files along a command's path. Design
-files may describe database usage but must not contain SQL DDL or statements.
-See the migrate design for how database schema specifications are used.
+Read the applicable parent design and coding files along a command's path.
+Design files may describe database usage but must not contain SQL DDL or
+statements. See the migrate design for how database schema specifications are
+used.
+
+# Handling schema or code direct change requests
+
+When directly asked to implement something without an explicit request to
+implement the spec, check the submitted specs unless the affected code has been
+specifically excluded from 4sight management. If the submitted specs cover the
+request, run `4sight spec implement prompt` and follow its instructions for the
+requested scope. Otherwise reject the implementation request and explain that
+the relevant spec changes must be submitted first.
 
 # Implementing Specs
 
@@ -68,7 +78,7 @@ Before handling a spec change request, check for un-imported spec changes. If
 any exist, stop and tell the user to import them or reset the workspace specs.
 
 When the user requests a spec change, including a code-spec change, a
-schema-spec change, or both, run `4sight spec change request <prompt>` with their
-request. Then run `4sight spec change author agent prompt` and follow its
+schema-spec change, or both, run `4sight spec change request <prompt>` with
+their request. Then run `4sight spec change author agent prompt` and follow its
 instructions. A change request that affects both code and schema specs should
 include both in the same authoring workflow.

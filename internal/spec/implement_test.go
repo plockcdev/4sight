@@ -122,3 +122,25 @@ func TestMigrationGuidanceMatchesSource(t *testing.T) {
 		}
 	}
 }
+
+type implementedPromptStore struct{ *fakeStore }
+
+func (s implementedPromptStore) changePointers() (string, string, error) {
+	return "ch-001", "ch-001", nil
+}
+func (s implementedPromptStore) implementedChangeID() (string, error) { return "ch-001", nil }
+
+func TestImplementPromptProvidesScopedInstructionsWhenCurrent(t *testing.T) {
+	root := newMetadata(t)
+	writeFile(t, filepath.Join(root, "coding.md"), "project standard\n")
+	st := implementedPromptStore{&fakeStore{specs: []importedSpec{{dir: "", name: "coding.md", body: "project standard\n"}}}}
+	var out bytes.Buffer
+	if err := runImplementPrompt(root, st, &out); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"no pending submitted change", "Reject it if the submitted specs do not cover it", "implement and verify only the requested scope", "project standard", "Never mark a submitted change implemented"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("missing %q", want)
+		}
+	}
+}
