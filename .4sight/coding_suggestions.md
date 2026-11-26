@@ -1,0 +1,26 @@
+Unless specified, use go for the application, and for scripting needs, unless
+specified otherwise, use nushell
+
+## golang
+
+Use go 1.27 or higher
+
+Do not _add_ package dependencies outside of go stdlib and experimental modules
+unless specifically requested or are from this list:
+
+- opentelemetry standard go client
+- openai standard go client
+
+After code changes are ready, run package targeted:
+
+- go fix
+- golangci-lint fmt
+- golangci-lint
+
+## Dolt database access
+
+When repeated data access can be batched, prefer batching where practical to
+reduce database calls. Preserve the required results, ordering, and transaction
+semantics. When using the Dolt CLI, consider sending a batch of SQL through
+standard input to avoid starting a separate process for each operation. Handle
+values safely and check errors for the entire batch.

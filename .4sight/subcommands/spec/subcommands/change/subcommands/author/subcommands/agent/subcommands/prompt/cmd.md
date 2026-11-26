@@ -34,6 +34,10 @@ request and edit all relevant specs on disk, including both kinds when the
 change affects both. Preserve their respective responsibilities as defined in
 the top-level design.
 
+If the request requires editing a higher-scope design outside the requested
+scope, instruct the agent to explain the necessary change and ask the user
+before proceeding with it.
+
 Instruct the author to follow the inherited author design when editing
 `4sight_AGENTS.md` and any workflow it delegates to a prompt command: keep
 workflow instructions in the generated prompt's specification and keep the
