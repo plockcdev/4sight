@@ -11,11 +11,15 @@ unless specifically requested or are from this list:
 - opentelemetry standard go client
 - openai standard go client
 
+Use templates instead of long string blocks
+
 After code changes are ready, run package targeted:
 
 - go fix
 - golangci-lint fmt
 - golangci-lint
+
+main package lives under git root `./cmd/<appname>/`
 
 ## Dolt database access
 

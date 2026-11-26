@@ -366,6 +366,7 @@ func runChangeReviewPrompt(root string, st *doltStore, out io.Writer) error {
 	}
 	diffProjectPath := filepath.ToSlash(filepath.Join(".4sight", "changes", state.Workspace, "unified.diff"))
 	fmt.Fprintf(&b, "\nComposite diff: %s\n\nRead the composite diff to review all changes since the last submitted specification. Read the full workspace spec for every file referenced in the diff, read all database schema specs listed above, and read workspace specs related to changed files or the change prompt, including parent command design docs and coding standards as applicable. Follow applicable coding standards, including referenced standards and command-path overrides, and assess changed specifications against them, unless directly instructed otherwise by the user.\n", diffProjectPath)
+	b.WriteString("Call out a mismatch between an edited design and a parent-scoped design, even if the mismatch was not introduced by the change. When a higher-scope design is edited, assess whether design documents beneath it remain aligned.\n")
 	responseSchemaRel := filepath.Join("subcommands", "spec", "subcommands", "change", "subcommands", "review", "subcommands", "agent", "responseSchema.json")
 	responseSchemaPath := filepath.Join(root, responseSchemaRel)
 	if _, err := os.Stat(responseSchemaPath); err == nil {

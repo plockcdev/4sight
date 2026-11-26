@@ -120,6 +120,9 @@ standards apply through `coding.md`, subject to overrides there. Preserve
 existing `coding.md` files, including those created by older versions; do not
 insert a reference into them.
 
+Updated suggestions apply to subsequent work. Updating them does not by itself
+require refactoring existing code.
+
 ## Import Specs
 
 After bootstrapping a new database, import any existing supported specification
